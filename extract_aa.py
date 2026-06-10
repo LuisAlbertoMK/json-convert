@@ -1,17 +1,17 @@
 """
 extract_aa.py — Extrae campos seleccionables del JSON de Adobe Analytics en Excel.
 
-Lee col D (adobe analytics original), extrae campos elegidos, escribe en col E.
+Lee col E (AA analytics automatico), extrae campos elegidos, escribe en col F.
 
 Uso:
   python extract_aa.py                                          # valores por defecto
   python extract_aa.py --keep page,request,props,evars          # solo estos 4
   python extract_aa.py --keep events,visitor,products           # campos adicionales
   python extract_aa.py --keep all                               # TODO el JSON (solo pretty-print)
-  python extract_aa.py --input RevisionManual_2.xlsx            # otro archivo
+  python extract_aa.py --input historial.xlsx                   # otro archivo
   python extract_aa.py --score                                  # métricas detalladas
 
-Maneja 2 formatos detectados en col D:
+Maneja 2 formatos detectados en col E:
   - Grupo 1 (filas 2-10): keys "eVars" + "props" con prop1/eVar1
   - Grupo 2 (filas 11-15): keys "evars" + "props" con c1/v1
 """
@@ -92,24 +92,24 @@ def main():
     wb = openpyxl.load_workbook(args.input)
     ws = wb.active
 
-    # Validar col D
-    d_header = str(ws.cell(1, 4).value or "").strip().lower()
-    if d_header and "analytics" not in d_header:
-        print(f"ADVERTENCIA: Col D header no esperado: '{ws.cell(1, 4).value}'")
+    # Validar col E
+    e_header = str(ws.cell(1, 5).value or "").strip().lower()
+    if e_header and "analytics" not in e_header:
+        print(f"ADVERTENCIA: Col E header no esperado: '{ws.cell(1, 5).value}'")
 
     total = 0
     errores = []
     stats_rows = []
 
     for row in range(2, ws.max_row + 1):
-        raw = ws.cell(row, 4).value  # col D
+        raw = ws.cell(row, 5).value  # col E
         if not raw:
-            errores.append((row, "col D vacia"))
+            errores.append((row, "col E vacia"))
             continue
 
         raw_str = str(raw).strip()
         if not raw_str or raw_str.startswith("(no") or raw_str.startswith("(error"):
-            errores.append((row, f"col D sin datos validos: {raw_str[:60]}"))
+            errores.append((row, f"col E sin datos validos: {raw_str[:60]}"))
             continue
 
         try:
@@ -126,7 +126,7 @@ def main():
             continue
 
         pretty = json.dumps(extracted, indent=2, ensure_ascii=False)
-        cell = ws.cell(row, 5)
+        cell = ws.cell(row, 6)
         cell.value = pretty
         cell.alignment = Alignment(wrap_text=True, vertical="top")
         total += 1
@@ -134,8 +134,8 @@ def main():
         if args.score:
             stats_rows.append({"row": row, "fields": list(extracted.keys()), **count_values(extracted)})
 
-    # Ancho col E
-    ws.column_dimensions["E"].width = 80
+    # Ancho col F
+    ws.column_dimensions["F"].width = 80
 
     # Guardar
     out = args.input

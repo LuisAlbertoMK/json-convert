@@ -563,7 +563,6 @@ async def amain():
     parser.add_argument("--proxy", help="Proxy HTTP (ej: http://proxy:8080)")
     parser.add_argument("--retry", type=int, default=1, help="Reintentos por URL")
     parser.add_argument("--workers", type=int, default=1, help="URLs concurrentes (default: 1)")
-    parser.add_argument("--run-clean", action="store_true", help="Ejecutar extract_aa.py al final")
     parser.add_argument("--discard-cookies", action="store_true", help="Rechazar banners de cookies")
     parser.add_argument("--progress", action="store_true", help="Mostrar barra de progreso")
     parser.add_argument("--diff", action="store_true", help="Mostrar diferencias entre ultima y penultima auditoria")
@@ -802,9 +801,9 @@ async def amain():
         if avg_time > 30:
             print("    * Paginas lentas. Aumentar --timeout o verificar SPAs")
 
-    if args.run_clean:
+    if os.path.exists(output_path):
         print(f"\n{'='*55}")
-        print("  Ejecutando extract_aa.py...")
+        print("  Limpiando AA en Excel...")
         print(f"{'='*55}")
         clean_script = os.path.join(os.path.dirname(__file__) or ".", "extract_aa.py")
         r = subprocess.run([sys.executable, clean_script, "--input", output_path],
