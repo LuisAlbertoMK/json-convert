@@ -1,10 +1,10 @@
 """
-extract_browser.py — Automatización: navega URLs, extrae digitalData + AA beacon, escribe Excel.
+extract_browser.py — Automatización: navega URLs, extrae digitaldata + AA beacon, escribe Excel.
 
 Workflow:
   1. URLs desde --urls (JSON) o --input (Excel plano)
   2. Procesa URLs concurrentemente (--workers N):
-     - Extrae window.digitalData (data layer)
+     - Extrae window.digitaldata (data layer)
      - Captura TODOS los beacons AA (s.t. + s.tl.)
      - Acumula, parsea, escribe
   3. Multi-sheet historial (recomendado, con --urls):
@@ -57,7 +57,7 @@ AA_DOMAINS = [
 ]
 
 DATA_LAYER_NAMES = [
-    "window.digitalData", "window.dataLayer", "window.DigitalData",
+    "window.digitaldata", "window.dataLayer",
     "window.digital_data", "window.utag_data",
 ]
 
@@ -292,7 +292,7 @@ async def process_url(
     page.on("request", on_beacon)
 
     result = {"row": row, "url": url, "status": 0, "error": None,
-              "title": "", "digitalData": None, "aa_parsed": None,
+              "title": "", "digitaldata": None, "aa_parsed": None,
               "aa_source": None, "extra_beacons": [], "elapsed_s": 0.0,
               "retries_used": 0}
 
@@ -309,7 +309,7 @@ async def process_url(
                 await try_dismiss_cookie_consent(page)
 
             result["title"] = await extract_title(page)
-            result["digitalData"] = await extract_digital_data(page)
+            result["digitaldata"] = await extract_digital_data(page)
             break  # éxito
 
         except PwTimeout:
@@ -370,15 +370,15 @@ async def write_result(
         row = result["row"]
         n_beacons = 1 + len(result.get("extra_beacons", []))
 
-        # digitalData → col F
-        dd_val = result.get("digitalData")
+        # digitaldata → col F
+        dd_val = result.get("digitaldata")
         if dd_val is not None:
             cell = ws.cell(row, 6)
             cell.value = json.dumps(dd_val, indent=2, ensure_ascii=False)
             cell.alignment = Alignment(wrap_text=True, vertical="top")
             metrics["ok_dd"] += 1
         else:
-            ws.cell(row, 6).value = "(no digitalData)"
+            ws.cell(row, 6).value = "(no digitaldata)"
 
         # AA → col D
         if result.get("aa_parsed"):
@@ -482,10 +482,10 @@ def compute_score(metrics: dict) -> int:
 SHEET_HEADERS = [
     "nombre / pagina auditada",
     "pagina auditada (URL)",
-    "digitalData (manual / debugger)",
+    "digitaldata (manual / debugger)",
     "AA analytics (automatico)",
     "AA analytics (limpio)",
-    "digitalData (automatica)",
+    "digitaldata (automatica)",
     "metadata / extra beacons",
 ]
 
@@ -548,7 +548,7 @@ def update_control(wb, audit_date: str, source: str, total: int,
 
 async def amain():
     import argparse
-    parser = argparse.ArgumentParser(description="Extrae digitalData + AA beacon desde URLs en Excel")
+    parser = argparse.ArgumentParser(description="Extrae digitaldata + AA beacon desde URLs en Excel")
     parser.add_argument("--row", type=int, help="Procesar solo una fila")
     parser.add_argument("--headed", action="store_true", help="Navegador visible")
     parser.add_argument("--input", default=INPUT_FILE, help="Archivo Excel de entrada")
@@ -660,8 +660,8 @@ async def amain():
         wb.close()
         sys.exit(1)
 
-    ws.cell(1, 3).value = ws.cell(1, 3).value or "digitalData (manual / debugger)"
-    ws.cell(1, 6).value = ws.cell(1, 6).value or "digitalData (automatica)"
+    ws.cell(1, 3).value = ws.cell(1, 3).value or "digitaldata (manual / debugger)"
+    ws.cell(1, 6).value = ws.cell(1, 6).value or "digitaldata (automatica)"
     ws.cell(1, 7).value = ws.cell(1, 7).value or "metadata / extra beacons"
 
     rows_to_process = []
@@ -770,7 +770,7 @@ async def amain():
   Config:            {args.workers} worker(s) concurrente(s)
   URLs procesadas:   {metrics['ok_aa']}/{metrics['total']}
   AA capturados:     {success_rate:.0f}%
-  digitalData:       {dd_rate:.0f}%
+  digitaldata:       {dd_rate:.0f}%
   Beacons totales:   {metrics['total_beacons']} ({beacons_per_url:.1f}/URL)
   Reintentos:        {metrics['retries']}
   Errores:           {metrics['errors']}
@@ -794,7 +794,7 @@ async def amain():
         if success_rate < 50:
             print("    * Verificar VPN / acceso a las URLs")
         if dd_rate < 50:
-            print("    * El data layer podria no llamarse window.digitalData")
+            print("    * El data layer podria no llamarse window.digitaldata")
         if avg_time > 30:
             print("    * Paginas lentas. Aumentar --timeout o verificar SPAs")
 
