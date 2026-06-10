@@ -117,7 +117,7 @@ def parse_aa_beacon(beacon_url: str, page_title: str = "") -> dict:
 
     result = {
         "solution": "analytics",
-        "page": {"title": page_title, "url": first("g")},
+        "page": {"title": page_title or "", "url": first("g")},
         "request": {
             "method": "GET",
             "hostname": parsed.hostname,
