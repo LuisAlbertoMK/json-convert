@@ -1,0 +1,8 @@
+{
+  "workers": 3,
+  "retry": 2,
+  "timeout": 35000,
+  "discard_cookies": true,
+  "progress": true,
+  "headed": false
+}

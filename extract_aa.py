@@ -1,7 +1,7 @@
 """
 extract_aa.py — Extrae campos seleccionables del JSON de Adobe Analytics en Excel.
 
-Lee col E (AA analytics automatico), extrae campos elegidos, escribe en col F.
+Lee col E (AA analytics automatico), extrae campos elegidos, escribe en col F (estructurado).
 
 Uso:
   python extract_aa.py                                          # valores por defecto

@@ -389,8 +389,12 @@ async def write_result(
         else:
             ws.cell(row, 5).value = f"({result.get('error', 'no AA')})"
 
+        # Score por URL (0-100)
+        url_score = compute_url_score(result)
+
         # Metadata → col G
-        meta = {"status": result["status"], "aa_source": result["aa_source"],
+        meta = {"score": url_score, "status": result["status"],
+                "aa_source": result["aa_source"],
                 "beacons": n_beacons, "title": result["title"],
                 "error": result.get("error"), "elapsed_s": result["elapsed_s"],
                 "url": result["url"][:120]}
@@ -477,6 +481,25 @@ def compute_score(metrics: dict) -> int:
     )
 
 
+def compute_url_score(result: dict) -> int:
+    """Score 0-100 por URL individual."""
+    s = 0
+    if result.get("digitaldata"):
+        s += 30
+    if result.get("aa_parsed"):
+        s += 30
+    if result.get("extra_beacons"):
+        s += 10
+    if not result.get("error") and result.get("status", 0) not in (-1, -2, 403):
+        s += 20
+    elapsed = result.get("elapsed_s", 99)
+    if elapsed < 5:
+        s += 10
+    elif elapsed < 15:
+        s += 5
+    return s
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # MULTI-SHEET HISTORIAL
 # ═══════════════════════════════════════════════════════════════════════════
@@ -487,7 +510,7 @@ SHEET_HEADERS = [
     "digitaldata (manual)",
     "digitaldata (automatica)",
     "AA analytics (automatico)",
-    "AA analytics (limpio)",
+    "AA analytics (estructurado)",
     "metadata / extra beacons",
 ]
 
@@ -566,6 +589,53 @@ def update_control(wb, audit_date: str, source: str, total: int,
         ws.cell(row=next_row, column=col).value = val
 
 
+def update_vars_sheet(wb, audit_date: str, rows_aa: list[tuple[int, dict]]):
+    """Sheet _vars: rastrea eVars/props/events de AA entre corridas."""
+    if "_vars" not in wb.sheetnames:
+        vs = wb.create_sheet("_vars")
+        vs.cell(1, 1).value = "Variable"
+        vs.column_dimensions["A"].width = 20
+        vs.cell(1, 2).value = "Tipo"
+        vs.cell(1, 3).value = audit_date
+        vs.column_dimensions["C"].width = 40
+        next_row = 2
+    else:
+        vs = wb["_vars"]
+        # Agregar columna si es nueva fecha
+        existing_cols = [str(vs.cell(1, c).value or "") for c in range(1, vs.max_column + 1)]
+        if audit_date not in existing_cols:
+            new_col = vs.max_column + 1
+            vs.cell(1, new_col).value = audit_date
+            vs.column_dimensions[chr(64 + new_col) if new_col <= 26 else "ZZ"].width = 40
+        next_row = vs.max_row + 1
+
+    seen = {}
+    for _, aa in rows_aa:
+        for key in ("eVars", "evars", "props", "events", "products"):
+            val = aa.get(key)
+            if val:
+                if isinstance(val, dict):
+                    for k in val:
+                        seen[f"{key}.{k}"] = key
+                elif isinstance(val, list):
+                    for item in val:
+                        seen[f"{key}.{item}"] = key
+                elif isinstance(val, str):
+                    seen[f"{key}"] = key
+
+    for var_name, var_type in seen.items():
+        # Buscar si ya existe
+        found = False
+        for r in range(2, vs.max_row + 1):
+            if vs.cell(r, 1).value == var_name:
+                found = True
+                break
+        if not found:
+            vs.cell(next_row, 1).value = var_name
+            vs.cell(next_row, 2).value = var_type
+            next_row += 1
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # MAIN ASYNC
 # ═══════════════════════════════════════════════════════════════════════════
@@ -587,7 +657,19 @@ async def amain():
     parser.add_argument("--discard-cookies", action="store_true", help="Rechazar banners de cookies")
     parser.add_argument("--progress", action="store_true", help="Mostrar barra de progreso")
     parser.add_argument("--diff", action="store_true", help="Mostrar diferencias entre ultima y penultima auditoria")
+    parser.add_argument("--config", help="Archivo JSON con config (workers, proxy, retry, etc)")
+    parser.add_argument("--retry-failed", action="store_true", help="Solo URLs con error en corridas anteriores")
     args = parser.parse_args()
+
+    # ── Cargar config desde JSON (si existe) ──
+    config_file = args.config or "audit.json"
+    if os.path.exists(config_file):
+        with open(config_file, encoding="utf-8") as f:
+            cfg = json.load(f)
+        for k, v in cfg.items():
+            if not getattr(args, k, None):
+                setattr(args, k, v)
+        logging.info("Config cargada: %s", config_file)
 
     if args.row:
         args.workers = 1
@@ -708,6 +790,12 @@ async def amain():
             if existing and len(str(existing).strip()) > 30 and "no AA" not in str(existing):
                 logging.info("Fila %d: saltando (resume)", row)
                 continue
+        if args.retry_failed:
+            existing = ws.cell(row, 5).value
+            if not existing or str(existing).strip().startswith("("):
+                logging.info("Fila %d: reintentar (error previo)", row)
+            else:
+                continue  # saltear las que ya tienen datos OK
         rows_to_process.append((row, str(url).strip()))
 
     if not rows_to_process:
@@ -720,6 +808,7 @@ async def amain():
     metrics = {"total": len(rows_to_process), "ok_aa": 0, "ok_dd": 0,
                "errors": 0, "retries": 0, "total_beacons": 0, "times": [],
                "errores_detalle": []}
+    aa_data = []  # (row, aa_parsed) para _vars
     start_time = time.time()
     excel_lock = asyncio.Lock()
     saved_count = [0]
@@ -758,6 +847,8 @@ async def amain():
                                      show_progress=args.progress,
                                      total_urls=len(rows_to_process),
                                      workers=args.workers)
+                if result.get("aa_parsed"):
+                    aa_data.append((row, result["aa_parsed"]))
             finally:
                 await page.close()
                 await ctx.close()
@@ -770,6 +861,10 @@ async def amain():
         await asyncio.gather(*tasks)
 
         await browser.close()
+
+    # Actualizar _vars con datos AA recolectados
+    if audit_date and aa_data:
+        update_vars_sheet(wb, audit_date, aa_data)
 
     # ── Guardado final + _control (multi-sheet) ──
     ws.column_dimensions["A"].width = 15
