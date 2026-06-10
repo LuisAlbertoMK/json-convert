@@ -1,5 +1,18 @@
-*.tmp
-*.bak
-~$*
+# Excel — archivos de auditoría (multi-sheet historial)
+*.xlsx
+*.xls
+!RevisionManual.xlsx
+
+# Logs
+*.log
+
+# Temp
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.DS_Store
+Thumbs.db
+
+# Generado
+urls.json

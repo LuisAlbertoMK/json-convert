@@ -2,30 +2,30 @@
 extract_browser.py — Automatización: navega URLs, extrae digitalData + AA beacon, escribe Excel.
 
 Workflow:
-  1. Lee Excel (--input) → URLs de col B
+  1. URLs desde --urls (JSON) o --input (Excel plano)
   2. Procesa URLs concurrentemente (--workers N):
      - Extrae window.digitalData (data layer)
      - Captura TODOS los beacons AA (s.t. + s.tl.)
      - Acumula, parsea, escribe
-  3. Escribe a --output (o al input si no se especifica)
-     - Col D: Adobe Analytics original (primer beacon)
-     - Col F: digitalData (data layer)
-     - Col G: metadata / extra beacons
+  3. Multi-sheet historial (recomendado, con --urls):
+     - Cada corrida crea un sheet con fecha (YYYY-MM-DD)
+     - Sheet _control registra metadata de cada auditoria
+     - Archivos previos NUNCA se modifican
   4. Guardado incremental cada 5 URLs + guardado final
-  5. Muestra métricas al final
+  5. Muestra metricas al final
 
 Uso:
-  python extract_browser.py                                   # todo, escribe sobre input
-  python extract_browser.py --output resultado.xlsx           # escribe a otro archivo
-  python extract_browser.py --workers 3                       # 3 URLs concurrentes
-  python extract_browser.py --workers 4 --output res.xlsx     # concurrente + seguro
-  python extract_browser.py --row 3                           # solo una fila
-  python extract_browser.py --resume                          # saltar procesadas
-  python extract_browser.py --headed                          # navegador visible
-  python extract_browser.py --input otro.xlsx                 # otro archivo
-  python extract_browser.py --log-file resultados.log         # persistir log
-  python extract_browser.py --proxy http://proxy:8080         # corporate proxy
-  python extract_browser.py --run-clean                       # ejecuta extract_aa.py al final
+  # RECOMENDADO: historial multi-sheet
+  python extract_browser.py --urls urls.json --output historial.xlsx
+  python extract_browser.py --urls urls.json --workers 3
+
+  # Clasico: Excel plano existente
+  python extract_browser.py                                       # RevisionManual.xlsx
+  python extract_browser.py --input otro.xlsx --output res.xlsx
+  python extract_browser.py --row 3 --headed
+  python extract_browser.py --resume --discard-cookies
+  python extract_browser.py --log-file audit.log --proxy http://proxy:8080
+  python extract_browser.py --run-clean
 
 Requiere:
   pip install playwright openpyxl
@@ -476,6 +476,73 @@ def compute_score(metrics: dict) -> int:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# MULTI-SHEET HISTORIAL
+# ═══════════════════════════════════════════════════════════════════════════
+
+SHEET_HEADERS = [
+    "nombre / pagina auditada",
+    "pagina auditada (URL)",
+    "digitalData (manual / debugger)",
+    "AA analytics (automatico)",
+    "AA analytics (limpio)",
+    "digitalData (automatica)",
+    "metadata / extra beacons",
+]
+
+CONTROL_HEADERS = [
+    "Fecha", "Source", "URLs", "AA OK", "DD OK", "Errores",
+    "Reintentos", "Score", "Tiempo (s)", "Workers",
+]
+
+
+def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
+    """
+    Carga o crea workbook con sheets _control + fecha actual.
+    Retorna (wb, ws, audit_date, skipped).
+    skipped=True si resume y el sheet de hoy ya existe.
+    """
+    audit_date = datetime.now().strftime("%Y-%m-%d")
+
+    if os.path.exists(output_path):
+        wb = openpyxl.load_workbook(output_path)
+    else:
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+        ws_ctrl = wb.create_sheet("_control")
+        ws_ctrl.append(CONTROL_HEADERS)
+        ws_ctrl.column_dimensions["A"].width = 14
+        ws_ctrl.column_dimensions["B"].width = 30
+
+    if audit_date in wb.sheetnames:
+        if resume:
+            logging.info("Sheet '%s' ya existe, saltando (--resume)", audit_date)
+            return wb, None, audit_date, True
+        wb.remove(wb[audit_date])
+        logging.info("Reemplazando sheet existente: %s", audit_date)
+
+    ws = wb.create_sheet(audit_date)
+    ws.append(SHEET_HEADERS)
+    ws.column_dimensions["A"].width = 40
+    ws.column_dimensions["B"].width = 60
+    ws.column_dimensions["D"].width = 80
+    ws.column_dimensions["F"].width = 60
+    ws.column_dimensions["G"].width = 40
+    return wb, ws, audit_date, False
+
+
+def update_control(wb, audit_date: str, source: str, total: int,
+                   ok_aa: int, ok_dd: int, errors: int, retries: int,
+                   score: int, elapsed_s: float, workers: int):
+    """Agrega fila al sheet _control con metadata de la corrida."""
+    ws = wb["_control"]
+    next_row = ws.max_row + 1
+    vals = [audit_date, source, total, ok_aa, ok_dd, errors,
+            retries, score, f"{elapsed_s:.0f}", workers]
+    for col, val in enumerate(vals, start=1):
+        ws.cell(row=next_row, column=col).value = val
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # MAIN ASYNC
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -496,6 +563,7 @@ async def amain():
     parser.add_argument("--run-clean", action="store_true", help="Ejecutar extract_aa.py al final")
     parser.add_argument("--discard-cookies", action="store_true", help="Rechazar banners de cookies")
     parser.add_argument("--progress", action="store_true", help="Mostrar barra de progreso")
+    parser.add_argument("--diff", action="store_true", help="Mostrar diferencias entre ultima y penultima auditoria")
     args = parser.parse_args()
 
     if args.row:
@@ -508,22 +576,46 @@ async def amain():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s",
                         handlers=log_handlers)
 
-    output_path = args.output or args.input
+    # ── --diff: comparar ultimas 2 auditorias (sin procesar) ──
+    if args.diff and not args.urls:
+        diff_path = args.output or "historial.xlsx"
+        if not os.path.exists(diff_path):
+            logging.error("No existe %s para comparar", diff_path)
+            return 1
+        wb = openpyxl.load_workbook(diff_path)
+        sheets = [s for s in wb.sheetnames if s != "_control"]
+        sheets.sort(key=lambda s: s if "-" in s else "0", reverse=True)  # YYYY-MM-DD sort
+        if len(sheets) < 2:
+            logging.info("Se necesitan al menos 2 auditorias para --diff")
+            wb.close()
+            return 0
+        print(f"\n  DIFERENCIAS: {sheets[1]} → {sheets[0]}")
+        print(f"  {'='*50}")
+        sa, sb = wb[sheets[0]], wb[sheets[1]]
+        for row in range(2, max(sa.max_row or 2, sb.max_row or 2) + 1):
+            url_a = sa.cell(row, 2).value or ""
+            url_b = sb.cell(row, 2).value or ""
+            aa_a = (sa.cell(row, 4).value or "")[:50]
+            aa_b = (sb.cell(row, 4).value or "")[:50]
+            dd_a = (sa.cell(row, 6).value or "")[:50]
+            dd_b = (sb.cell(row, 6).value or "")[:50]
+            if str(aa_a).strip() != str(aa_b).strip() or str(dd_a).strip() != str(dd_b).strip():
+                print(f"  Fila {row}: {url_a or url_b}")
+                if str(aa_a).strip() != str(aa_b).strip():
+                    print(f"    AA: {'ANTES' if not sa.cell(row,4).value else 'NUEVO'}")
+                if str(dd_a).strip() != str(dd_b).strip():
+                    print(f"    DD: {'ANTES' if not sa.cell(row,6).value else 'NUEVO'}")
+        wb.close()
+        return 0
 
-    # ── Excel: crear desde --urls o cargar --input ──
+    # ── Excel: --urls → multi-sheet historial | --input → clasico ──
+    audit_date = None  # flag: multi-sheet mode
     if args.urls:
-        if not args.output:
-            output_path = "resultados.xlsx"
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "URLs"
-        ws.cell(1, 1).value = "nombre / pagina auditada"
-        ws.cell(1, 2).value = "pagina auditada (URL)"
-        ws.cell(1, 3).value = "digitalData (manual / debugger)"
-        ws.cell(1, 4).value = "AA analytics (automatico)"
-        ws.cell(1, 5).value = "AA analytics (limpio)"
-        ws.cell(1, 6).value = "digitalData (automatica)"
-        ws.cell(1, 7).value = "metadata / extra beacons"
+        output_path = args.output or "historial.xlsx"
+        wb, ws, audit_date, skipped = setup_multisheet(output_path, args.urls, args.resume)
+        if skipped:
+            logging.info("Sheet de hoy ya auditado. Usá --diff para ver diferencias.")
+            return 0
         with open(args.urls, encoding="utf-8") as f:
             entries = json.load(f)
         for i, entry in enumerate(entries, start=2):
@@ -533,16 +625,15 @@ async def amain():
             elif isinstance(entry, dict):
                 ws.cell(i, 1).value = entry.get("nombre", entry.get("url", ""))
                 ws.cell(i, 2).value = entry.get("url", "")
-        ws.column_dimensions["A"].width = 40
-        ws.column_dimensions["B"].width = 60
-        logging.info("Creado Excel desde %s: %d URLs", args.urls, len(entries))
+        logging.info("Multi-sheet %s: %d URLs", audit_date, len(entries))
     else:
+        output_path = args.output or args.input
         # ── Cargar Excel existente ──
         wb = openpyxl.load_workbook(args.input)
         ws = wb.active
 
-    if args.output and not args.urls:
-        # Si hay --output (y no venimos de --urls), copiamos antes de mutar
+    if args.output and not args.urls and not audit_date:
+        # Copiamos output sin mutar input (solo modo clasico)
         wb_copy = openpyxl.Workbook()
         wb_copy.remove(wb_copy.active)
         for sheet_name in wb.sheetnames:
@@ -648,21 +739,27 @@ async def amain():
 
         await browser.close()
 
-    # ── Guardado final ──
+    # ── Guardado final + _control (multi-sheet) ──
     ws.column_dimensions["D"].width = 80
     ws.column_dimensions["F"].width = 60
     ws.column_dimensions["G"].width = 40
+    total_time = time.time() - start_time
+    score = compute_score(metrics)
+    if audit_date:
+        update_control(wb, audit_date, args.urls or "",
+                       metrics["total"],
+                       metrics["ok_aa"], metrics["ok_dd"],
+                       metrics["errors"], metrics["retries"],
+                       score, total_time, args.workers)
     out = save_workbook(wb, output_path)
     wb.close()
     logging.info("Guardado: %s", out)
 
     # ── Métricas ──
-    total_time = time.time() - start_time
     success_rate = metrics["ok_aa"] / max(metrics["total"], 1) * 100
     dd_rate = metrics["ok_dd"] / max(metrics["total"], 1) * 100
     avg_time = sum(metrics["times"]) / max(len(metrics["times"]), 1)
     beacons_per_url = metrics["total_beacons"] / max(metrics["total"], 1)
-    score = compute_score(metrics)
 
     sep = "=" * 55
     dash = "-" * 55
@@ -706,8 +803,7 @@ async def amain():
         print("  Ejecutando extract_aa.py...")
         print(f"{'='*55}")
         clean_script = os.path.join(os.path.dirname(__file__) or ".", "extract_aa.py")
-        inp = args.output or args.input
-        r = subprocess.run([sys.executable, clean_script, "--input", inp],
+        r = subprocess.run([sys.executable, clean_script, "--input", output_path],
                            capture_output=True, text=True)
         print(r.stdout)
         if r.stderr:
