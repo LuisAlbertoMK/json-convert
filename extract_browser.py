@@ -420,12 +420,12 @@ async def write_result(
 # ═══════════════════════════════════════════════════════════════════════════
 
 def print_progress(done: int, total: int, errors: int, workers: int):
-    """Barra de progreso simple (sin dependencias)."""
+    """Barra de progreso simple (solo ASCII, funciona en Windows)."""
     pct = done / total * 100 if total else 0
     bar_len = 20
     filled = int(bar_len * done / total) if total else 0
-    bar = "█" * filled + "░" * (bar_len - filled)
-    print(f"\r  [{done}/{total}] {bar} {pct:.0f}% | err:{errors} | w:{workers}   ", end="", flush=True)
+    bar = "#" * filled + "." * (bar_len - filled)
+    print(f"\r  [{done}/{total}] [{bar}] {pct:.0f}% | err:{errors} | w:{workers}   ", end="", flush=True)
     if done == total:
         print()  # nueva línea al final
 
@@ -486,6 +486,7 @@ async def amain():
     parser.add_argument("--headed", action="store_true", help="Navegador visible")
     parser.add_argument("--input", default=INPUT_FILE, help="Archivo Excel de entrada")
     parser.add_argument("--output", help="Archivo Excel de salida (default: escribe sobre input)")
+    parser.add_argument("--urls", help="Archivo JSON con URLs (crea Excel desde 0). Formato: [{'url':'...','nombre':'...'}, 'url_simple']")
     parser.add_argument("--timeout", type=int, default=35000, help="Timeout por pagina (ms)")
     parser.add_argument("--resume", action="store_true", help="Saltar filas con datos")
     parser.add_argument("--log-file", help="Archivo de log")
@@ -509,12 +510,39 @@ async def amain():
 
     output_path = args.output or args.input
 
-    # ── Excel: SIEMPRE copia de seguridad ──
-    wb = openpyxl.load_workbook(args.input)
-    ws = wb.active
+    # ── Excel: crear desde --urls o cargar --input ──
+    if args.urls:
+        if not args.output:
+            output_path = "resultados.xlsx"
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "URLs"
+        ws.cell(1, 1).value = "nombre / pagina auditada"
+        ws.cell(1, 2).value = "pagina auditada (URL)"
+        ws.cell(1, 3).value = "digitalData (manual / debugger)"
+        ws.cell(1, 4).value = "AA analytics (automatico)"
+        ws.cell(1, 5).value = "AA analytics (limpio)"
+        ws.cell(1, 6).value = "digitalData (automatica)"
+        ws.cell(1, 7).value = "metadata / extra beacons"
+        with open(args.urls, encoding="utf-8") as f:
+            entries = json.load(f)
+        for i, entry in enumerate(entries, start=2):
+            if isinstance(entry, str):
+                ws.cell(i, 1).value = entry
+                ws.cell(i, 2).value = entry
+            elif isinstance(entry, dict):
+                ws.cell(i, 1).value = entry.get("nombre", entry.get("url", ""))
+                ws.cell(i, 2).value = entry.get("url", "")
+        ws.column_dimensions["A"].width = 40
+        ws.column_dimensions["B"].width = 60
+        logging.info("Creado Excel desde %s: %d URLs", args.urls, len(entries))
+    else:
+        # ── Cargar Excel existente ──
+        wb = openpyxl.load_workbook(args.input)
+        ws = wb.active
 
-    if args.output:
-        # Si hay --output, copiamos antes de mutar
+    if args.output and not args.urls:
+        # Si hay --output (y no venimos de --urls), copiamos antes de mutar
         wb_copy = openpyxl.Workbook()
         wb_copy.remove(wb_copy.active)
         for sheet_name in wb.sheetnames:
@@ -533,9 +561,6 @@ async def amain():
                         dst_cell.protection = copy(cell.protection)
         ws = wb_copy.active
         wb = wb_copy
-    else:
-        # Modo destructivo: trabajamos sobre wb original
-        pass
 
     errs = validate_sheet(ws)
     if errs:
@@ -639,10 +664,12 @@ async def amain():
     beacons_per_url = metrics["total_beacons"] / max(metrics["total"], 1)
     score = compute_score(metrics)
 
+    sep = "=" * 55
+    dash = "-" * 55
     print(f"""
-{'='*55}
-  MÉTRICAS Y SCORE
-{'='*55}
+{sep}
+  METRICAS Y SCORE
+{sep}
   Config:            {args.workers} worker(s) concurrente(s)
   URLs procesadas:   {metrics['ok_aa']}/{metrics['total']}
   AA capturados:     {success_rate:.0f}%
@@ -650,29 +677,29 @@ async def amain():
   Beacons totales:   {metrics['total_beacons']} ({beacons_per_url:.1f}/URL)
   Reintentos:        {metrics['retries']}
   Errores:           {metrics['errors']}
-{'─'*55}
+{dash}
   Tiempo total:      {timedelta(seconds=int(total_time))}
   Promedio/URL:      {avg_time:.1f}s
   Guardados incr.:   cada {SAVE_EVERY_N} URLs
-{'─'*55}
+{dash}
   SCORE GLOBAL:      {score}/100
-{'─'*55}""")
+{dash}""")
 
     if metrics["errores_detalle"]:
         print(f"  DETALLE ERRORES ({len(metrics['errores_detalle'])}):")
         categories = classify_errors(metrics["errores_detalle"])
         for cat, rows in categories.items():
             rows_str = ", ".join(str(r) for r in rows)
-            print(f"    • {cat}: Fila(s) {rows_str}")
+            print(f"    * {cat}: Fila(s) {rows_str}")
 
     if score < 60:
         print("  Sugerencias:")
         if success_rate < 50:
-            print("    • Verificar VPN / acceso a las URLs")
+            print("    * Verificar VPN / acceso a las URLs")
         if dd_rate < 50:
-            print("    • El data layer podria no llamarse window.digitalData")
+            print("    * El data layer podria no llamarse window.digitalData")
         if avg_time > 30:
-            print("    • Paginas lentas. Aumentar --timeout o verificar SPAs")
+            print("    * Paginas lentas. Aumentar --timeout o verificar SPAs")
 
     if args.run_clean:
         print(f"\n{'='*55}")
