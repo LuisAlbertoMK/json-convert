@@ -370,24 +370,24 @@ async def write_result(
         row = result["row"]
         n_beacons = 1 + len(result.get("extra_beacons", []))
 
-        # digitaldata → col F
+        # digitaldata → col D
         dd_val = result.get("digitaldata")
         if dd_val is not None:
-            cell = ws.cell(row, 6)
+            cell = ws.cell(row, 4)
             cell.value = json.dumps(dd_val, indent=2, ensure_ascii=False)
             cell.alignment = Alignment(wrap_text=True, vertical="top")
             metrics["ok_dd"] += 1
         else:
-            ws.cell(row, 6).value = "(no digitaldata)"
+            ws.cell(row, 4).value = "(no digitaldata)"
 
-        # AA → col D
+        # AA → col E
         if result.get("aa_parsed"):
-            cell = ws.cell(row, 4)
+            cell = ws.cell(row, 5)
             cell.value = json.dumps(result["aa_parsed"], indent=2, ensure_ascii=False)
             cell.alignment = Alignment(wrap_text=True, vertical="top")
             metrics["ok_aa"] += 1
         else:
-            ws.cell(row, 4).value = f"({result.get('error', 'no AA')})"
+            ws.cell(row, 5).value = f"({result.get('error', 'no AA')})"
 
         # Metadata → col G
         meta = {"status": result["status"], "aa_source": result["aa_source"],
@@ -482,12 +482,12 @@ def compute_score(metrics: dict) -> int:
 # ═══════════════════════════════════════════════════════════════════════════
 
 SHEET_HEADERS = [
-    "nombre / pagina auditada",
+    "nombre pagina auditada",
     "pagina auditada (URL)",
-    "digitaldata (manual / debugger)",
+    "digitaldata (manual)",
+    "digitaldata (automatica)",
     "AA analytics (automatico)",
     "AA analytics (limpio)",
-    "digitaldata (automatica)",
     "metadata / extra beacons",
 ]
 
@@ -526,7 +526,8 @@ def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
     ws.append(SHEET_HEADERS)
     ws.column_dimensions["A"].width = 40
     ws.column_dimensions["B"].width = 60
-    ws.column_dimensions["D"].width = 100
+    ws.column_dimensions["D"].width = 80
+    ws.column_dimensions["E"].width = 100
     ws.column_dimensions["F"].width = 80
     ws.column_dimensions["G"].width = 60
     return wb, ws, audit_date, False
@@ -597,16 +598,16 @@ async def amain():
         for row in range(2, max(sa.max_row or 2, sb.max_row or 2) + 1):
             url_a = sa.cell(row, 2).value or ""
             url_b = sb.cell(row, 2).value or ""
-            aa_a = (sa.cell(row, 4).value or "")[:50]
-            aa_b = (sb.cell(row, 4).value or "")[:50]
-            dd_a = (sa.cell(row, 6).value or "")[:50]
-            dd_b = (sb.cell(row, 6).value or "")[:50]
+            aa_a = (sa.cell(row, 5).value or "")[:50]
+            aa_b = (sb.cell(row, 5).value or "")[:50]
+            dd_a = (sa.cell(row, 4).value or "")[:50]
+            dd_b = (sb.cell(row, 4).value or "")[:50]
             if str(aa_a).strip() != str(aa_b).strip() or str(dd_a).strip() != str(dd_b).strip():
                 print(f"  Fila {row}: {url_a or url_b}")
                 if str(aa_a).strip() != str(aa_b).strip():
-                    print(f"    AA: {'ANTES' if not sa.cell(row,4).value else 'NUEVO'}")
+                    print(f"    AA: {'ANTES' if not sa.cell(row,5).value else 'NUEVO'}")
                 if str(dd_a).strip() != str(dd_b).strip():
-                    print(f"    DD: {'ANTES' if not sa.cell(row,6).value else 'NUEVO'}")
+                    print(f"    DD: {'ANTES' if not sa.cell(row,4).value else 'NUEVO'}")
         wb.close()
         return 0
 
@@ -662,8 +663,8 @@ async def amain():
         wb.close()
         sys.exit(1)
 
-    ws.cell(1, 3).value = ws.cell(1, 3).value or "digitaldata (manual / debugger)"
-    ws.cell(1, 6).value = ws.cell(1, 6).value or "digitaldata (automatica)"
+    ws.cell(1, 3).value = ws.cell(1, 3).value or "digitaldata (manual)"
+    ws.cell(1, 4).value = ws.cell(1, 4).value or "digitaldata (automatica)"
     ws.cell(1, 7).value = ws.cell(1, 7).value or "metadata / extra beacons"
 
     rows_to_process = []
@@ -674,7 +675,7 @@ async def amain():
         if args.row and row != args.row:
             continue
         if args.resume:
-            existing = ws.cell(row, 4).value
+            existing = ws.cell(row, 5).value
             if existing and len(str(existing).strip()) > 30 and "no AA" not in str(existing):
                 logging.info("Fila %d: saltando (resume)", row)
                 continue
@@ -742,7 +743,8 @@ async def amain():
         await browser.close()
 
     # ── Guardado final + _control (multi-sheet) ──
-    ws.column_dimensions["D"].width = 100
+    ws.column_dimensions["D"].width = 80
+    ws.column_dimensions["E"].width = 100
     ws.column_dimensions["F"].width = 80
     ws.column_dimensions["G"].width = 60
     total_time = time.time() - start_time
