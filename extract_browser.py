@@ -2,12 +2,12 @@
 extract_browser.py — Automatización: navega URLs, extrae digitalData + AA beacon, escribe Excel.
 
 Workflow:
-  1. Lee Excel → URLs de col B
-  2. Para cada URL (Playwright headless, 1 browser, 1 page, 1 request handler):
+  1. Lee Excel (--input) → URLs de col B
+  2. Procesa URLs concurrentemente (--workers N):
      - Extrae window.digitalData (data layer)
      - Captura TODOS los beacons AA (s.t. + s.tl.)
      - Acumula, parsea, escribe
-  3. Escribe:
+  3. Escribe a --output (o al input si no se especifica)
      - Col D: Adobe Analytics original (primer beacon)
      - Col F: digitalData (data layer)
      - Col G: metadata / extra beacons
@@ -15,20 +15,24 @@ Workflow:
   5. Muestra métricas al final
 
 Uso:
-  python extract_browser.py                           # todo
-  python extract_browser.py --row 3                   # solo una fila
-  python extract_browser.py --resume                  # saltar procesadas
-  python extract_browser.py --headed                  # navegador visible
-  python extract_browser.py --input otro.xlsx         # otro archivo
-  python extract_browser.py --log-file resultados.log # persistir
-  python extract_browser.py --proxy http://proxy:8080 # corporate proxy
-  python extract_browser.py --run-clean               # ejecuta extract_aa.py al final
+  python extract_browser.py                                   # todo, escribe sobre input
+  python extract_browser.py --output resultado.xlsx           # escribe a otro archivo
+  python extract_browser.py --workers 3                       # 3 URLs concurrentes
+  python extract_browser.py --workers 4 --output res.xlsx     # concurrente + seguro
+  python extract_browser.py --row 3                           # solo una fila
+  python extract_browser.py --resume                          # saltar procesadas
+  python extract_browser.py --headed                          # navegador visible
+  python extract_browser.py --input otro.xlsx                 # otro archivo
+  python extract_browser.py --log-file resultados.log         # persistir log
+  python extract_browser.py --proxy http://proxy:8080         # corporate proxy
+  python extract_browser.py --run-clean                       # ejecuta extract_aa.py al final
 
 Requiere:
   pip install playwright openpyxl
   python -m playwright install chromium
 """
 
+import asyncio
 import json
 import os
 import re
@@ -36,12 +40,13 @@ import sys
 import time
 import subprocess
 import logging
+from copy import copy
 from datetime import datetime, timedelta
 from urllib.parse import urlparse, parse_qs
 
 import openpyxl
 from openpyxl.styles import Alignment
-from playwright.sync_api import sync_playwright, TimeoutError as PwTimeout
+from playwright.async_api import async_playwright, TimeoutError as PwTimeout
 
 INPUT_FILE = "RevisionManual.xlsx"
 SAVE_EVERY_N = 5  # guardado incremental cada N URLs
@@ -166,13 +171,13 @@ def build_aa_from_s(s_obj: dict, page_title: str = "") -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# EXTRACT (depende de page, pero handler se pasa desde afuera)
+# EXTRACT (async, dependen de page de Playwright)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def extract_s_object(page) -> dict | None:
+async def extract_s_object(page) -> dict | None:
     """Lee window.s desde el navegador."""
     try:
-        s_obj = page.evaluate("""() => {
+        s_obj = await page.evaluate("""() => {
             const s = window.s || (window.s_c_il && window.s_c_il[window.s_c_il.length-1]);
             if (!s) return null;
             const vars = {};
@@ -192,11 +197,11 @@ def extract_s_object(page) -> dict | None:
         return None
 
 
-def extract_digital_data(page) -> dict | None:
+async def extract_digital_data(page) -> dict | None:
     """Extrae data layer probando varios nombres."""
     for var_name in DATA_LAYER_NAMES:
         try:
-            dd = page.evaluate(var_name)
+            dd = await page.evaluate(var_name)
             if dd and isinstance(dd, dict) and len(dd) > 0:
                 return dd
         except Exception as e:
@@ -204,15 +209,15 @@ def extract_digital_data(page) -> dict | None:
     return None
 
 
-def extract_title(page) -> str:
+async def extract_title(page) -> str:
     try:
-        return (page.evaluate("document.title") or "").strip()
+        return (await page.evaluate("document.title") or "").strip()
     except Exception as e:
         logging.debug("title failed: %s", e)
         return ""
 
 
-def try_dismiss_cookie_consent(page):
+async def try_dismiss_cookie_consent(page):
     """Intenta cerrar banners de consentimiento comunes."""
     selectors = [
         "button:has-text('Aceptar')", "button:has-text('Accept')",
@@ -222,9 +227,9 @@ def try_dismiss_cookie_consent(page):
     ]
     for sel in selectors:
         try:
-            btn = page.query_selector(sel)
+            btn = await page.query_selector(sel)
             if btn:
-                btn.click()
+                await btn.click()
                 logging.debug("Cookie consent dismissed: %s", sel)
                 return True
         except Exception:
@@ -261,6 +266,151 @@ def save_workbook(wb, path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# WORKER — procesa UNA URL, devuelve resultado
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def process_url(
+    page, row: int, url: str,
+    discard_cookies: bool = False,
+    timeout_ms: int = 35000,
+    max_retry: int = 1,
+) -> dict:
+    """
+    Navega a una URL, captura beacons + data layer.
+    Devuelve dict con resultados.
+    Cada worker tiene su propia page + handler de beacons.
+    """
+    beacon_urls = []
+
+    def on_beacon(request):
+        url_lower = request.url.lower()
+        for domain in AA_DOMAINS:
+            if domain in url_lower and "/b/ss/" in url_lower:
+                beacon_urls.append(request.url)
+                return
+
+    page.on("request", on_beacon)
+
+    result = {"row": row, "url": url, "status": 0, "error": None,
+              "title": "", "digitalData": None, "aa_parsed": None,
+              "aa_source": None, "extra_beacons": [], "elapsed_s": 0.0,
+              "retries_used": 0}
+
+    t0 = time.time()
+
+    for attempt in range(1 + max_retry):
+        try:
+            resp = await page.goto(url, wait_until="load", timeout=timeout_ms)
+            await asyncio.sleep(2)
+            if resp:
+                result["status"] = resp.status
+
+            if discard_cookies:
+                await try_dismiss_cookie_consent(page)
+
+            result["title"] = await extract_title(page)
+            result["digitalData"] = await extract_digital_data(page)
+            break  # éxito
+
+        except PwTimeout:
+            result["status"] = -1
+            result["error"] = "timeout"
+        except Exception as e:
+            result["status"] = -2
+            result["error"] = str(e)[:120]
+            logging.error("Error navegando fila %d: %s", row, e)
+
+        if attempt < max_retry and result["status"] in (-1, -2):
+            wait = 5 * (attempt + 1)
+            logging.warning("  Fila %d: retry %d en %ds", row, attempt + 1, wait)
+            await asyncio.sleep(wait)
+            result["retries_used"] += 1
+        else:
+            break
+
+    # Procesar beacons capturados
+    if beacon_urls:
+        result["aa_parsed"] = parse_aa_beacon(beacon_urls[0], result["title"])
+        result["aa_source"] = "beacon"
+        if len(beacon_urls) > 1:
+            result["extra_beacons"] = [parse_aa_beacon(u, result["title"])
+                                       for u in beacon_urls[1:]]
+
+    # Fallback a window.s
+    if not result["aa_parsed"]:
+        s_obj = await extract_s_object(page)
+        if s_obj and s_obj.get("pageName"):
+            result["aa_parsed"] = build_aa_from_s(s_obj, result["title"])
+            result["aa_source"] = "window.s"
+
+    if not result["aa_parsed"] and not result["error"]:
+        result["error"] = "no AA data captured"
+
+    result["elapsed_s"] = round(time.time() - t0, 1)
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ESCRITURA EXCEL (protegida por lock)
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def write_result(
+    ws, result: dict, metrics: dict,
+    excel_lock: asyncio.Lock, output_path: str,
+    saved_count: list,  # [int] mutable para closure
+) -> None:
+    """
+    Escribe el resultado de una URL en el Excel.
+    Usa lock para evitar corrupción entre workers.
+    """
+    async with excel_lock:
+        row = result["row"]
+        n_beacons = 1 + len(result.get("extra_beacons", []))
+
+        # digitalData → col F
+        dd_val = result.get("digitalData")
+        if dd_val is not None:
+            cell = ws.cell(row, 6)
+            cell.value = json.dumps(dd_val, indent=2, ensure_ascii=False)
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            metrics["ok_dd"] += 1
+        else:
+            ws.cell(row, 6).value = "(no digitalData)"
+
+        # AA → col D
+        if result.get("aa_parsed"):
+            cell = ws.cell(row, 4)
+            cell.value = json.dumps(result["aa_parsed"], indent=2, ensure_ascii=False)
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            metrics["ok_aa"] += 1
+        else:
+            ws.cell(row, 4).value = f"({result.get('error', 'no AA')})"
+
+        # Metadata → col G
+        meta = {"status": result["status"], "aa_source": result["aa_source"],
+                "beacons": n_beacons, "title": result["title"],
+                "error": result.get("error"), "elapsed_s": result["elapsed_s"],
+                "url": result["url"][:120]}
+        if result.get("extra_beacons"):
+            meta["extra_beacons"] = result["extra_beacons"]
+        ws.cell(row, 7).value = json.dumps(meta, indent=2, ensure_ascii=False)
+
+        if result.get("error") or not result["aa_parsed"]:
+            metrics["errors"] += 1
+            metrics["errores_detalle"].append({"row": row, "error": result.get("error", "no AA")})
+
+        metrics["total_beacons"] += n_beacons
+        metrics["times"].append(result["elapsed_s"])
+        metrics["retries"] += result.get("retries_used", 0)
+
+        # Guardado incremental
+        saved_count[0] += 1
+        if saved_count[0] % SAVE_EVERY_N == 0:
+            save_workbook(ws.parent, output_path)
+            logging.info("  Guardado incremental (#%d)", saved_count[0])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # SCORE
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -280,24 +430,28 @@ def compute_score(metrics: dict) -> int:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# MAIN
+# MAIN ASYNC
 # ═══════════════════════════════════════════════════════════════════════════
 
-def main():
+async def amain():
     import argparse
     parser = argparse.ArgumentParser(description="Extrae digitalData + AA beacon desde URLs en Excel")
     parser.add_argument("--row", type=int, help="Procesar solo una fila")
     parser.add_argument("--headed", action="store_true", help="Navegador visible")
-    parser.add_argument("--input", default=INPUT_FILE, help="Archivo Excel")
-    parser.add_argument("--delay", type=float, default=0, help="Segundos entre URLs")
+    parser.add_argument("--input", default=INPUT_FILE, help="Archivo Excel de entrada")
+    parser.add_argument("--output", help="Archivo Excel de salida (default: escribe sobre input)")
     parser.add_argument("--timeout", type=int, default=35000, help="Timeout por pagina (ms)")
     parser.add_argument("--resume", action="store_true", help="Saltar filas con datos")
     parser.add_argument("--log-file", help="Archivo de log")
     parser.add_argument("--proxy", help="Proxy HTTP (ej: http://proxy:8080)")
-    parser.add_argument("--retry", type=int, default=1, help="Reintentos por URL (default: 1)")
+    parser.add_argument("--retry", type=int, default=1, help="Reintentos por URL")
+    parser.add_argument("--workers", type=int, default=1, help="URLs concurrentes (default: 1)")
     parser.add_argument("--run-clean", action="store_true", help="Ejecutar extract_aa.py al final")
     parser.add_argument("--discard-cookies", action="store_true", help="Rechazar banners de cookies")
     args = parser.parse_args()
+
+    if args.row:
+        args.workers = 1
 
     # ── Logging ──
     log_handlers = [logging.StreamHandler(sys.stderr)]
@@ -306,9 +460,35 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s",
                         handlers=log_handlers)
 
-    # ── Excel ──
+    output_path = args.output or args.input
+
+    # ── Excel: SIEMPRE copia de seguridad ──
     wb = openpyxl.load_workbook(args.input)
     ws = wb.active
+
+    if args.output:
+        # Si hay --output, copiamos antes de mutar
+        wb_copy = openpyxl.Workbook()
+        wb_copy.remove(wb_copy.active)
+        for sheet_name in wb.sheetnames:
+            src = wb[sheet_name]
+            dst = wb_copy.create_sheet(title=sheet_name)
+            for row in src.iter_rows():
+                for cell in row:
+                    dst_cell = dst.cell(row=cell.row, column=cell.column)
+                    dst_cell.value = cell.value
+                    if cell.has_style:
+                        dst_cell.font = copy(cell.font)
+                        dst_cell.alignment = copy(cell.alignment)
+                        dst_cell.border = copy(cell.border)
+                        dst_cell.fill = copy(cell.fill)
+                        dst_cell.number_format = copy(cell.number_format)
+                        dst_cell.protection = copy(cell.protection)
+        ws = wb_copy.active
+        wb = wb_copy
+    else:
+        # Modo destructivo: trabajamos sobre wb original
+        pass
 
     errs = validate_sheet(ws)
     if errs:
@@ -339,161 +519,64 @@ def main():
         wb.close()
         return
 
-    logging.info("URLs a procesar: %d", len(rows_to_process))
+    logging.info("URLs a procesar: %d | Workers: %d", len(rows_to_process), args.workers)
 
     metrics = {"total": len(rows_to_process), "ok_aa": 0, "ok_dd": 0,
                "errors": 0, "retries": 0, "total_beacons": 0, "times": [],
                "errores_detalle": []}
     start_time = time.time()
-    saved_count = 0
+    excel_lock = asyncio.Lock()
+    saved_count = [0]
 
     # ── Browser ──
-    with sync_playwright() as pw:
+    async with async_playwright() as pw:
         launch_kw = {"headless": not args.headed}
         if args.proxy:
             launch_kw["proxy"] = {"server": args.proxy}
 
-        browser = pw.chromium.launch(**launch_kw)
-        context = browser.new_context(
-            viewport={"width": 1280, "height": 720},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
-        )
-        page = context.new_page()
+        browser = await pw.chromium.launch(**launch_kw)
 
-        # ── UN SOLO handler de beacons ──
-        beacon_urls = []
+        sem = asyncio.Semaphore(args.workers)
 
-        def on_beacon(request):
-            url_lower = request.url.lower()
-            for domain in AA_DOMAINS:
-                if domain in url_lower and "/b/ss/" in url_lower:
-                    beacon_urls.append(request.url)
-                    return
+        async def worker(row: int, url: str):
+            """Crea su propio context + page, procesa, escribe."""
+            ctx = await browser.new_context(
+                viewport={"width": 1280, "height": 720},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                           "AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
+            )
+            page = await ctx.new_page()
+            try:
+                result = await process_url(
+                    page, row, url,
+                    discard_cookies=args.discard_cookies,
+                    timeout_ms=args.timeout,
+                    max_retry=args.retry,
+                )
+                status_str = f"HTTP {result['status']}" if result['status'] > 0 else f"ERR {result['status']}"
+                logging.info("Fila %d | %s | AA: %s | %.1fs",
+                             row, status_str,
+                             result["aa_source"] or "none",
+                             result["elapsed_s"])
+                await write_result(ws, result, metrics, excel_lock, output_path, saved_count)
+            finally:
+                await page.close()
+                await ctx.close()
 
-        page.on("request", on_beacon)
+        async def worker_sem(row: int, url: str):
+            async with sem:
+                await worker(row, url)
 
-        # ── Loop ──
-        for idx, (row, url) in enumerate(rows_to_process):
-            t0 = time.time()
-            logging.info("[%d/%d] Fila %d: %s", idx + 1, len(rows_to_process), row, url[:100])
+        tasks = [worker_sem(row, url) for row, url in rows_to_process]
+        await asyncio.gather(*tasks)
 
-            # Limpiar beacons anteriores (handler es el mismo)
-            beacon_urls.clear()
-
-            result = {"status": 0, "error": None, "title": "",
-                      "digitalData": None, "aa_parsed": None,
-                      "aa_source": None, "extra_beacons": []}
-
-            for attempt in range(1 + args.retry):
-                try:
-                    # Navegar (SPA-safe: load + sleep)
-                    resp = page.goto(url, wait_until="load", timeout=args.timeout)
-                    time.sleep(2)
-                    if resp:
-                        result["status"] = resp.status
-
-                    # Cookie consent
-                    if args.discard_cookies:
-                        try_dismiss_cookie_consent(page)
-
-                    # Extraer datos
-                    result["title"] = extract_title(page)
-                    result["digitalData"] = extract_digital_data(page)
-                    break  # éxito
-
-                except PwTimeout:
-                    result["status"] = -1
-                    result["error"] = "timeout"
-                except Exception as e:
-                    result["status"] = -2
-                    result["error"] = str(e)[:120]
-                    logging.error("Error navegando: %s", e)
-
-                # Retry lógico: solo en 5xx o timeout, no en 4xx
-                if attempt < args.retry and result["status"] in (-1, -2):
-                    wait = 5 * (attempt + 1)
-                    logging.warning("  Retry %d en %ds (status=%s)", attempt + 1, wait, result["status"])
-                    time.sleep(wait)
-                    metrics["retries"] += 1
-                else:
-                    break
-
-            # Procesar beacons
-            if beacon_urls:
-                result["aa_parsed"] = parse_aa_beacon(beacon_urls[0], result["title"])
-                result["aa_source"] = "beacon"
-                if len(beacon_urls) > 1:
-                    result["extra_beacons"] = [parse_aa_beacon(u, result["title"]) for u in beacon_urls[1:]]
-
-            # Fallback a window.s
-            if not result["aa_parsed"]:
-                s_obj = extract_s_object(page)
-                if s_obj and s_obj.get("pageName"):
-                    result["aa_parsed"] = build_aa_from_s(s_obj, result["title"])
-                    result["aa_source"] = "window.s"
-
-            if not result["aa_parsed"] and not result["error"]:
-                result["error"] = "no AA data captured"
-
-            elapsed = time.time() - t0
-            metrics["times"].append(elapsed)
-            n_beacons = 1 + len(result.get("extra_beacons", []))
-            metrics["total_beacons"] += n_beacons
-            status_str = f"HTTP {result['status']}" if result["status"] > 0 else f"ERR {result['status']}"
-            logging.info("  Status: %s | AA: %s | Beacons: %d | %.1fs", status_str,
-                         result["aa_source"] or "none", n_beacons, elapsed)
-
-            # ── Escribir Excel ──
-            # digitalData → col F
-            dd_val = result.get("digitalData")
-            if dd_val is not None:
-                cell = ws.cell(row, 6)
-                cell.value = json.dumps(dd_val, indent=2, ensure_ascii=False)
-                cell.alignment = Alignment(wrap_text=True, vertical="top")
-                metrics["ok_dd"] += 1
-            else:
-                ws.cell(row, 6).value = "(no digitalData)"
-
-            # AA → col D
-            if result.get("aa_parsed"):
-                cell = ws.cell(row, 4)
-                cell.value = json.dumps(result["aa_parsed"], indent=2, ensure_ascii=False)
-                cell.alignment = Alignment(wrap_text=True, vertical="top")
-                metrics["ok_aa"] += 1
-            else:
-                ws.cell(row, 4).value = f"({result.get('error', 'no AA')})"
-
-            # Metadata → col G
-            meta = {"status": result["status"], "aa_source": result["aa_source"],
-                    "beacons": n_beacons, "title": result["title"],
-                    "error": result.get("error"), "elapsed_s": round(elapsed, 1),
-                    "url": url[:120]}
-            if result.get("extra_beacons"):
-                meta["extra_beacons"] = result["extra_beacons"]
-            ws.cell(row, 7).value = json.dumps(meta, indent=2, ensure_ascii=False)
-
-            if result.get("error") or not result["aa_parsed"]:
-                metrics["errors"] += 1
-                metrics["errores_detalle"].append({"row": row, "error": result.get("error", "no AA")})
-
-            # Guardado incremental
-            saved_count += 1
-            if saved_count % SAVE_EVERY_N == 0:
-                path = save_workbook(wb, args.input)
-                logging.info("  Guardado incremental (#%d)", saved_count)
-
-            if args.delay and idx < len(rows_to_process) - 1:
-                time.sleep(args.delay)
-
-        page.close()
-        context.close()
-        browser.close()
+        await browser.close()
 
     # ── Guardado final ──
     ws.column_dimensions["D"].width = 80
     ws.column_dimensions["F"].width = 60
     ws.column_dimensions["G"].width = 40
-    out = save_workbook(wb, args.input)
+    out = save_workbook(wb, output_path)
     wb.close()
     logging.info("Guardado: %s", out)
 
@@ -509,6 +592,7 @@ def main():
 {'='*55}
   MÉTRICAS Y SCORE
 {'='*55}
+  Config:            {args.workers} worker(s) concurrente(s)
   URLs procesadas:   {metrics['ok_aa']}/{metrics['total']}
   AA capturados:     {success_rate:.0f}%
   digitalData:       {dd_rate:.0f}%
@@ -537,19 +621,23 @@ def main():
         if avg_time > 30:
             print("    • Paginas lentas. Aumentar --timeout o verificar SPAs")
 
-    # ── Encadenamiento opcional ──
     if args.run_clean:
         print(f"\n{'='*55}")
         print("  Ejecutando extract_aa.py...")
         print(f"{'='*55}")
         clean_script = os.path.join(os.path.dirname(__file__) or ".", "extract_aa.py")
-        result = subprocess.run([sys.executable, clean_script, "--input", args.input],
-                                capture_output=True, text=True)
-        print(result.stdout)
-        if result.stderr:
-            print(result.stderr, file=sys.stderr)
+        inp = args.output or args.input
+        r = subprocess.run([sys.executable, clean_script, "--input", inp],
+                           capture_output=True, text=True)
+        print(r.stdout)
+        if r.stderr:
+            print(r.stderr, file=sys.stderr)
 
     return score
+
+
+def main():
+    asyncio.run(amain())
 
 
 if __name__ == "__main__":
