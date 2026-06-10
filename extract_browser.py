@@ -396,7 +396,9 @@ async def write_result(
                 "url": result["url"][:120]}
         if result.get("extra_beacons"):
             meta["extra_beacons"] = result["extra_beacons"]
-        ws.cell(row, 7).value = json.dumps(meta, indent=2, ensure_ascii=False)
+        cell = ws.cell(row, 7)
+        cell.value = json.dumps(meta, indent=2, ensure_ascii=False)
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
 
         if result.get("error") or not result["aa_parsed"]:
             metrics["errors"] += 1
@@ -524,9 +526,9 @@ def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
     ws.append(SHEET_HEADERS)
     ws.column_dimensions["A"].width = 40
     ws.column_dimensions["B"].width = 60
-    ws.column_dimensions["D"].width = 80
-    ws.column_dimensions["F"].width = 60
-    ws.column_dimensions["G"].width = 40
+    ws.column_dimensions["D"].width = 100
+    ws.column_dimensions["F"].width = 80
+    ws.column_dimensions["G"].width = 60
     return wb, ws, audit_date, False
 
 
@@ -740,9 +742,9 @@ async def amain():
         await browser.close()
 
     # ── Guardado final + _control (multi-sheet) ──
-    ws.column_dimensions["D"].width = 80
-    ws.column_dimensions["F"].width = 60
-    ws.column_dimensions["G"].width = 40
+    ws.column_dimensions["D"].width = 100
+    ws.column_dimensions["F"].width = 80
+    ws.column_dimensions["G"].width = 60
     total_time = time.time() - start_time
     score = compute_score(metrics)
     if audit_date:
