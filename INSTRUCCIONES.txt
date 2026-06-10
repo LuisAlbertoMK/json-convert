@@ -1,0 +1,103 @@
+╔══════════════════════════════════════════════════════════════╗
+║   EXTRACT AA — INSTRUCCIONES PARA EL OTRO EQUIPO           ║
+║   Proyecto: D:\json-convert                                ║
+╚══════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════
+ 1. COPIAR ARCHIVOS
+═══════════════════════════════════════════════════════════════
+
+Llevá toda la carpeta al otro equipo. Debe contener:
+
+  install.bat              ← instalador (1 vez)
+  extract_browser.py       ← navega URLs y captura datos
+  extract_aa.py            ← limpia JSON (col D → col E)
+  RevisionManual.xlsx      ← Excel con URLs en col B
+
+═══════════════════════════════════════════════════════════════
+ 2. REQUISITOS PREVIOS
+═══════════════════════════════════════════════════════════════
+
+┌─ SÍ o sí ─────────────────────────────────────────────────┐
+│ Python 3.9+                                                │
+└────────────────────────────────────────────────────────────┘
+
+Si NO está instalado en el equipo:
+→ Pedile a IT que lo instale (https://www.python.org/downloads/)
+→ O bajá el installer y ejecutalo (marcá "Add Python to PATH")
+
+No se necesita: npm, node, git, java, ni nada más.
+
+═══════════════════════════════════════════════════════════════
+ 3. INSTALACIÓN (UNA SOLA VEZ — SIN ADMIN)
+═══════════════════════════════════════════════════════════════
+
+Hacé doble clic en install.bat.
+
+O manualmente desde terminal (cmd.exe, no PowerShell):
+
+  pip install --user openpyxl playwright
+  python -m playwright install chromium
+
+Esto descarga ~180 MB de Chromium. Con VPN es rápido.
+
+═══════════════════════════════════════════════════════════════
+ 4. EJECUTAR
+═══════════════════════════════════════════════════════════════
+
+Asegurate de tener el Excel abierto para ver los resultados.
+Podés abrirlo mientras se ejecuta (se guarda al final).
+
+┌─ PASO 1: Extraer del navegador ────────────────────────────┐
+│ python extract_browser.py                                  │
+│                                                             │
+│   → Abre cada URL en navegador headless                    │
+│   → Extrae digitalData → col F                             │
+│   → Captura beacon Adobe Analytics → col D                 │
+│                                                             │
+│ Tips:                                                       │
+│   python extract_browser.py --headed     (ver navegador)   │
+│   python extract_browser.py --row 3      (solo una fila)   │
+└─────────────────────────────────────────────────────────────┘
+
+┌─ PASO 2: Limpiar JSON ────────────────────────────────────┐
+│ python extract_aa.py                                        │
+│                                                             │
+│   → Lee col D (AA original)                                │
+│   → Extrae solo: page, request, props, evars               │
+│   → Escribe col E (AA limpio) con formato pretty-print     │
+└─────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════
+ 5. OPENCODE (OPCIONAL — PARA TRABAJAR DESDE CUALQUIER PC)
+═══════════════════════════════════════════════════════════════
+
+No necesita admin ni variables de entorno.
+
+┌─ Descargar ────────────────────────────────────────────────┐
+│ 1. Abrí https://github.com/opencode-ai/opencode/releases   │
+│ 2. Buscá el último release                                 │
+│ 3. En "Assets" descargá:                                   │
+│    opencode-x86_64-pc-windows-msvc.zip                     │
+└─────────────────────────────────────────────────────────────┘
+
+┌─ Instalar ─────────────────────────────────────────────────│
+│ 1. Extraé el ZIP en:  C:\Users\tuusuario\opencode\        │
+│ 2. Debería quedar:    opencode.exe                         │
+│ 3. Ejecutalo directo:  .\opencode.exe                      │
+└─────────────────────────────────────────────────────────────┘
+
+No hace falta agregar al PATH. Corrélo desde la carpeta
+donde lo extrajiste, o creá un acceso directo en el
+escritorio apuntando a opencode.exe.
+
+═══════════════════════════════════════════════════════════════
+ FLUJO COMPLETO EN 3 COMANDOS
+═══════════════════════════════════════════════════════════════
+
+  cd D:\json-convert          (o donde hayas copiado los archivos)
+
+  pip install --user openpyxl playwright          (1 vez)
+  python -m playwright install chromium           (1 vez)
+  python extract_browser.py                       (navegar)
+  python extract_aa.py                            (limpiar)
