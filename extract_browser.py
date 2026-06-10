@@ -545,8 +545,8 @@ def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
     for col_letter, fill in HEADER_FILLS.items():
         col_idx = ord(col_letter) - 64  # A=1, B=2...
         ws.cell(1, col_idx).fill = fill
-    ws.column_dimensions["A"].width = 40
-    ws.column_dimensions["B"].width = 60
+    ws.column_dimensions["A"].width = 15
+    ws.column_dimensions["B"].width = 15
     ws.column_dimensions["D"].width = 80
     ws.column_dimensions["E"].width = 100
     ws.column_dimensions["F"].width = 80
@@ -642,12 +642,21 @@ async def amain():
         with open(args.urls, encoding="utf-8") as f:
             entries = json.load(f)
         for i, entry in enumerate(entries, start=2):
+            wrap = Alignment(wrap_text=True, vertical="top")
             if isinstance(entry, str):
-                ws.cell(i, 1).value = entry
-                ws.cell(i, 2).value = entry
+                c1 = ws.cell(i, 1)
+                c1.value = entry
+                c1.alignment = wrap
+                c2 = ws.cell(i, 2)
+                c2.value = entry
+                c2.alignment = wrap
             elif isinstance(entry, dict):
-                ws.cell(i, 1).value = entry.get("nombre", entry.get("url", ""))
-                ws.cell(i, 2).value = entry.get("url", "")
+                c1 = ws.cell(i, 1)
+                c1.value = entry.get("nombre", entry.get("url", ""))
+                c1.alignment = wrap
+                c2 = ws.cell(i, 2)
+                c2.value = entry.get("url", "")
+                c2.alignment = wrap
         logging.info("Multi-sheet %s: %d URLs", audit_date, len(entries))
     else:
         output_path = args.output or args.input
@@ -763,6 +772,8 @@ async def amain():
         await browser.close()
 
     # ── Guardado final + _control (multi-sheet) ──
+    ws.column_dimensions["A"].width = 15
+    ws.column_dimensions["B"].width = 15
     ws.column_dimensions["D"].width = 80
     ws.column_dimensions["E"].width = 100
     ws.column_dimensions["F"].width = 80
