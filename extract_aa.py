@@ -19,7 +19,7 @@ Maneja 2 formatos detectados en col E:
 import json
 import sys
 import openpyxl
-from openpyxl.styles import Alignment
+from openpyxl.styles import Alignment, PatternFill
 
 DEFAULT_KEEP = ["page", "request", "props", "evars"]
 ALL_FIELDS = [
@@ -72,6 +72,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Extrae campos del JSON de Adobe Analytics en Excel")
     parser.add_argument("--input", default="RevisionManual.xlsx", help="Archivo Excel")
+    parser.add_argument("--sheet", help="Nombre del sheet (default: auto-detecta el mas reciente)")
     parser.add_argument("--keep", default=",".join(DEFAULT_KEEP),
                         help=f"Campos a conservar (separados por coma). Opciones: {','.join(ALL_FIELDS)}. Usar 'all' para todo.")
     parser.add_argument("--score", action="store_true", help="Mostrar metricas detalladas por fila")
@@ -90,7 +91,22 @@ def main():
             sys.exit(1)
 
     wb = openpyxl.load_workbook(args.input)
-    ws = wb.active
+
+    # Seleccionar sheet
+    if args.sheet:
+        if args.sheet not in wb.sheetnames:
+            print(f"ERROR: Sheet '{args.sheet}' no encontrado")
+            sys.exit(1)
+        ws = wb[args.sheet]
+    else:
+        # Auto-detect: el sheet de datos mas reciente (excluye _control)
+        candidates = [s for s in wb.sheetnames if s != "_control"]
+        candidates.sort(key=lambda s: s if "-" in s else "0", reverse=True)
+        if not candidates:
+            print("ERROR: No hay sheets de datos en el archivo")
+            sys.exit(1)
+        ws = wb[candidates[0]]
+        print(f"Sheet auto-detectado: '{candidates[0]}'")
 
     # Validar col E
     e_header = str(ws.cell(1, 5).value or "").strip().lower()
@@ -129,6 +145,7 @@ def main():
         cell = ws.cell(row, 6)
         cell.value = pretty
         cell.alignment = Alignment(wrap_text=True, vertical="top")
+        cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
         total += 1
 
         if args.score:

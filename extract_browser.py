@@ -45,7 +45,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse, parse_qs
 
 import openpyxl
-from openpyxl.styles import Alignment
+from openpyxl.styles import Alignment, PatternFill
 from playwright.async_api import async_playwright, TimeoutError as PwTimeout
 
 INPUT_FILE = "RevisionManual.xlsx"
@@ -370,7 +370,7 @@ async def write_result(
         row = result["row"]
         n_beacons = 1 + len(result.get("extra_beacons", []))
 
-        # digitaldata → col D
+        # digitaldata → col D (rojo: no relevante, sin fill)
         dd_val = result.get("digitaldata")
         if dd_val is not None:
             cell = ws.cell(row, 4)
@@ -380,7 +380,7 @@ async def write_result(
         else:
             ws.cell(row, 4).value = "(no digitaldata)"
 
-        # AA → col E
+        # AA → col E (amarillo: media importancia, sin fill)
         if result.get("aa_parsed"):
             cell = ws.cell(row, 5)
             cell.value = json.dumps(result["aa_parsed"], indent=2, ensure_ascii=False)
@@ -496,6 +496,23 @@ CONTROL_HEADERS = [
     "Reintentos", "Score", "Tiempo (s)", "Workers",
 ]
 
+# Colores de columnas (A=azul claro estructura, C/F=verde, E=amarillo, D=rojo, G=sin color)
+HEADER_FILLS = {
+    "A": PatternFill(start_color="D6E4F0", end_color="D6E4F0", fill_type="solid"),  # azul claro
+    "B": PatternFill(start_color="D6E4F0", end_color="D6E4F0", fill_type="solid"),  # azul claro
+    "C": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # verde
+    "D": PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),  # rojo
+    "E": PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"),  # amarillo
+    "F": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # verde
+}
+# G: sin color
+
+DATA_FILLS = {
+    "C": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # verde
+    "F": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # verde
+}
+# D/E/G: sin fill en datos
+
 
 def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
     """
@@ -524,6 +541,10 @@ def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
 
     ws = wb.create_sheet(audit_date)
     ws.append(SHEET_HEADERS)
+    # Aplicar colores a headers
+    for col_letter, fill in HEADER_FILLS.items():
+        col_idx = ord(col_letter) - 64  # A=1, B=2...
+        ws.cell(1, col_idx).fill = fill
     ws.column_dimensions["A"].width = 40
     ws.column_dimensions["B"].width = 60
     ws.column_dimensions["D"].width = 80
@@ -806,8 +827,10 @@ async def amain():
         print("  Limpiando AA en Excel...")
         print(f"{'='*55}")
         clean_script = os.path.join(os.path.dirname(__file__) or ".", "extract_aa.py")
-        r = subprocess.run([sys.executable, clean_script, "--input", output_path],
-                           capture_output=True, text=True)
+        cmd = [sys.executable, clean_script, "--input", output_path]
+        if audit_date:
+            cmd += ["--sheet", audit_date]
+        r = subprocess.run(cmd, capture_output=True, text=True)
         print(r.stdout)
         if r.stderr:
             print(r.stderr, file=sys.stderr)
