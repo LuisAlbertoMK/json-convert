@@ -1,11 +1,13 @@
 """
-test_parse.py — Tests unitarios para parse_aa_beacon() y build_aa_from_s().
+test_parse.py — Tests unitarios para parse_aa_beacon(), build_aa_from_s()
+y extract_fields().
 
 Uso:
-  python test_parse.py                    # verbose (default)
-  python test_parse.py -v                 # aún más detalle
-  python test_parse.py TestParseBeacon    # solo una clase
-  python test_parse.py test_beacon_basic  # solo un test
+  python test_parse.py                       # verbose (default)
+  python test_parse.py -v                    # aún más detalle
+  python test_parse.py TestParseBeacon       # solo una clase
+  python test_parse.py test_beacon_basic     # solo un test
+  python test_parse.py TestExtractFields     # tests de extract_aa.py
 
 Requiere: unittest (stdlib, 0 deps externas)
 No requiere: playwright, openpyxl, red, navegador.
@@ -19,6 +21,7 @@ import os
 # Importar funciones del script principal
 sys.path.insert(0, os.path.dirname(__file__))
 from extract_browser import parse_aa_beacon, build_aa_from_s
+from extract_aa import extract_fields
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -282,6 +285,105 @@ class TestBuildFromS(unittest.TestCase):
         self.assertEqual(result["pageName"], "test")
         self.assertNotIn("customVar", result)
         self.assertNotIn("somePlugin", result)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TESTS: extract_fields (de extract_aa.py)
+# ═══════════════════════════════════════════════════════════════════════════
+
+SAMPLE_BEACON_JSON = {
+    "solution": "analytics",
+    "page": {"title": "Ford Mach-E", "url": "https://ford.com/es/mach-e"},
+    "request": {"method": "GET", "hostname": "smetrics.ford.com"},
+    "visitor": {"experienceCloudId": "abc123"},
+    "hit": {"id": "s123", "type": "pageView", "reportSuiteId": "fordglobal"},
+    "events": ["event1", "event2"],
+    "eVars": {"eVar1": '{"id":"mach-e"}', "eVar5": "preview"},
+    "props": {"prop1": "home", "prop2": "vehiculos"},
+    "pageName": "ford:mach-e:preview",
+    "channel": "automotriz",
+}
+
+SAMPLE_BEACON_JSON_GROUP2 = {
+    "solution": "analytics",
+    "evars": {"v1": "home", "v10": "nuevo"},
+    "props": {"c1": "home-es", "c5": "navegacion"},
+    "pageName": "ford:es:home",
+}
+
+SAMPLE_BEACON_JSON_MINIMAL = {
+    "solution": "analytics",
+    "pageName": "test:minimal",
+    "events": ["event1"],
+}
+
+
+class TestExtractFields(unittest.TestCase):
+    """Tests para extract_fields(data, keep) de extract_aa.py."""
+
+    def test_default_fields(self):
+        """Campos default: page, request, props, evars."""
+        result = extract_fields(SAMPLE_BEACON_JSON, ["page", "request", "props", "evars"])
+        self.assertIn("page", result)
+        self.assertIn("request", result)
+        self.assertIn("props", result)
+        self.assertIn("evars", result)
+        self.assertEqual(result["props"], {"prop1": "home", "prop2": "vehiculos"})
+        self.assertEqual(result["evars"], {"eVar1": '{"id":"mach-e"}', "eVar5": "preview"})
+
+    def test_evars_unification(self):
+        """'evars' unifica eVars (Grupo 1) y evars (Grupo 2)."""
+        r1 = extract_fields(SAMPLE_BEACON_JSON, ["evars"])
+        self.assertEqual(r1["evars"]["eVar1"], '{"id":"mach-e"}')
+        r2 = extract_fields(SAMPLE_BEACON_JSON_GROUP2, ["evars"])
+        self.assertEqual(r2["evars"]["v1"], "home")
+
+    def test_all_fields(self):
+        """'all' extrae todo lo disponible."""
+        result = extract_fields(SAMPLE_BEACON_JSON, [
+            "solution", "page", "request", "visitor", "hit",
+            "events", "eVars", "props", "pageName", "channel",
+        ])
+        self.assertEqual(len(result), 10)
+        self.assertEqual(result["solution"], "analytics")
+        self.assertEqual(result["events"], ["event1", "event2"])
+        self.assertEqual(result["channel"], "automotriz")
+
+    def test_extrae_solo_lo_pedido(self):
+        """No debe incluir campos no solicitados."""
+        result = extract_fields(SAMPLE_BEACON_JSON, ["pageName"])
+        self.assertEqual(result, {"pageName": "ford:mach-e:preview"})
+        self.assertNotIn("page", result)
+        self.assertNotIn("eVars", result)
+
+    def test_campo_inexistente(self):
+        """Campo pedido que no existe en data → no aparece en resultado."""
+        result = extract_fields(SAMPLE_BEACON_JSON, ["products"])
+        self.assertEqual(result, {})
+
+    def test_data_vacio(self):
+        """data={} → resultado vacío."""
+        result = extract_fields({}, ["page", "props"])
+        self.assertEqual(result, {})
+
+    def test_keep_vacio(self):
+        """keep=[] → resultado vacío."""
+        result = extract_fields(SAMPLE_BEACON_JSON, [])
+        self.assertEqual(result, {})
+
+    def test_grupo2_evars(self):
+        """Grupo 2 con keys 'evars' (minúscula)."""
+        result = extract_fields(SAMPLE_BEACON_JSON_GROUP2, ["evars", "props"])
+        self.assertEqual(result["evars"]["v1"], "home")
+        self.assertEqual(result["props"]["c1"], "home-es")
+
+    def test_datos_minimos(self):
+        """JSON mínimo sin props/evars."""
+        result = extract_fields(SAMPLE_BEACON_JSON_MINIMAL, ["pageName", "events"])
+        self.assertEqual(result["pageName"], "test:minimal")
+        self.assertEqual(result["events"], ["event1"])
+        self.assertNotIn("props", result)
+        self.assertNotIn("eVars", result)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

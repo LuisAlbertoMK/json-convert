@@ -358,6 +358,9 @@ async def write_result(
     ws, result: dict, metrics: dict,
     excel_lock: asyncio.Lock, output_path: str,
     saved_count: list,  # [int] mutable para closure
+    show_progress: bool = False,
+    total_urls: int = 0,
+    workers: int = 1,
 ) -> None:
     """
     Escribe el resultado de una URL en el Excel.
@@ -408,6 +411,49 @@ async def write_result(
         if saved_count[0] % SAVE_EVERY_N == 0:
             save_workbook(ws.parent, output_path)
             logging.info("  Guardado incremental (#%d)", saved_count[0])
+        if show_progress:
+            print_progress(saved_count[0], total_urls, metrics["errors"], workers)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PROGRESS BAR
+# ═══════════════════════════════════════════════════════════════════════════
+
+def print_progress(done: int, total: int, errors: int, workers: int):
+    """Barra de progreso simple (sin dependencias)."""
+    pct = done / total * 100 if total else 0
+    bar_len = 20
+    filled = int(bar_len * done / total) if total else 0
+    bar = "█" * filled + "░" * (bar_len - filled)
+    print(f"\r  [{done}/{total}] {bar} {pct:.0f}% | err:{errors} | w:{workers}   ", end="", flush=True)
+    if done == total:
+        print()  # nueva línea al final
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ERROR CLASSIFICATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+def classify_errors(errors_detail: list[dict]) -> dict[str, list[int]]:
+    """Agrupa errores por categoría para output legible."""
+    categories = {
+        "HTTP 403 (acceso denegado)": [],
+        "Timeout": [],
+        "Sin dato AA (no beacon)": [],
+        "Error de red/conexión": [],
+    }
+    for e in errors_detail:
+        err = e.get("error", "")
+        if "timeout" in err.lower():
+            categories["Timeout"].append(e["row"])
+        elif "403" in err:
+            categories["HTTP 403 (acceso denegado)"].append(e["row"])
+        elif "no aa" in err.lower() or "no AA" in err:
+            categories["Sin dato AA (no beacon)"].append(e["row"])
+        else:
+            categories["Error de red/conexión"].append(e["row"])
+    # Filtrar vacías
+    return {k: v for k, v in categories.items() if v}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -448,6 +494,7 @@ async def amain():
     parser.add_argument("--workers", type=int, default=1, help="URLs concurrentes (default: 1)")
     parser.add_argument("--run-clean", action="store_true", help="Ejecutar extract_aa.py al final")
     parser.add_argument("--discard-cookies", action="store_true", help="Rechazar banners de cookies")
+    parser.add_argument("--progress", action="store_true", help="Mostrar barra de progreso")
     args = parser.parse_args()
 
     if args.row:
@@ -497,7 +544,8 @@ async def amain():
         wb.close()
         sys.exit(1)
 
-    ws.cell(1, 6).value = ws.cell(1, 6).value or "digitalData (data layer)"
+    ws.cell(1, 3).value = ws.cell(1, 3).value or "digitalData (manual / debugger)"
+    ws.cell(1, 6).value = ws.cell(1, 6).value or "digitalData (automatica)"
     ws.cell(1, 7).value = ws.cell(1, 7).value or "metadata / extra beacons"
 
     rows_to_process = []
@@ -558,7 +606,10 @@ async def amain():
                              row, status_str,
                              result["aa_source"] or "none",
                              result["elapsed_s"])
-                await write_result(ws, result, metrics, excel_lock, output_path, saved_count)
+                await write_result(ws, result, metrics, excel_lock, output_path, saved_count,
+                                     show_progress=args.progress,
+                                     total_urls=len(rows_to_process),
+                                     workers=args.workers)
             finally:
                 await page.close()
                 await ctx.close()
@@ -608,9 +659,11 @@ async def amain():
 {'─'*55}""")
 
     if metrics["errores_detalle"]:
-        print("  DETALLE ERRORES:")
-        for e in metrics["errores_detalle"]:
-            print(f"    Fila {e['row']}: {e['error']}")
+        print(f"  DETALLE ERRORES ({len(metrics['errores_detalle'])}):")
+        categories = classify_errors(metrics["errores_detalle"])
+        for cat, rows in categories.items():
+            rows_str = ", ".join(str(r) for r in rows)
+            print(f"    • {cat}: Fila(s) {rows_str}")
 
     if score < 60:
         print("  Sugerencias:")
