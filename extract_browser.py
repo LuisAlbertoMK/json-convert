@@ -659,6 +659,71 @@ DATA_FILLS = {
 # D/E/G: sin fill en datos
 
 
+def apply_data_fills(ws):
+    """Aplica colores de fondo a celdas de datos según su contenido."""
+    from openpyxl.styles import PatternFill as PF
+    RED = PF(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    YELLOW = PF(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+
+    for row in range(2, ws.max_row + 1):
+        # Col C — DD manual (verde si tiene datos)
+        c = ws.cell(row, 3).value
+        if c and not str(c).startswith("(no"):
+            ws.cell(row, 3).fill = DATA_FILLS["C"]
+
+        # Col D — DD automático (rojo si falló)
+        d = ws.cell(row, 4).value
+        if d and str(d).strip() == "(no digitaldata)":
+            ws.cell(row, 4).fill = RED
+
+        # Col E — AA auto (amarillo si tiene datos)
+        e = ws.cell(row, 5).value
+        if e and not str(e).startswith("("):
+            ws.cell(row, 5).fill = YELLOW
+
+        # Col F — AA estructurado (verde si tiene datos)
+        f = ws.cell(row, 6).value
+        if f:
+            ws.cell(row, 6).fill = DATA_FILLS["F"]
+
+
+def split_aa_workbooks(wb, audit_date: str, output_dir: str):
+    """
+    Crea con_aa.xlsx y sin_aa.xlsx a partir del sheet audit_date.
+    Cada archivo mantiene headers + colores.
+    """
+    ws = wb[audit_date]
+    con_rows, sin_rows = [], []
+    for row in range(2, ws.max_row + 1):
+        aa = ws.cell(row, 5).value
+        if aa and not str(aa).startswith("("):
+            con_rows.append(row)
+        else:
+            sin_rows.append(row)
+
+    for suffix, rows in [("con_aa", con_rows), ("sin_aa", sin_rows)]:
+        path = os.path.join(output_dir, f"{suffix}.xlsx")
+        swb = openpyxl.Workbook()
+        swb.remove(swb.active)
+        sws = swb.create_sheet(audit_date)
+        sws.append(SHEET_HEADERS)
+        for col_letter, fill in HEADER_FILLS.items():
+            col_idx = openpyxl.utils.column_index_from_string(col_letter)
+            sws.cell(1, col_idx).fill = fill
+        for row_num in rows:
+            for col in range(1, 8):
+                src = ws.cell(row_num, col)
+                dst = sws.cell(row_num, col)
+                dst.value = src.value
+                if src.has_style:
+                    dst.fill = copy(src.fill) if src.fill else None
+        _set_col_widths(sws)
+        apply_data_fills(sws)
+        swb.save(path)
+        swb.close()
+        logging.info("Split %s: %d filas -> %s", suffix, len(rows), path)
+
+
 def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
     """
     Carga o crea workbook con sheets _control + fecha actual.
@@ -773,6 +838,8 @@ async def amain():
     parser.add_argument("--workers", type=int, default=1, help="URLs concurrentes (default: 1)")
     parser.add_argument("--discard-cookies", action="store_true", help="[obsoleto] ahora siempre se intenta cerrar el banner de cookies")
     parser.add_argument("--wait-after", type=int, default=4, help="Segundos a esperar tras cargar la pagina (default: 4)")
+    parser.add_argument("--market", help="Filtrar por mercado (ES, EN, MX...). Usa campo 'market' en urls.json")
+    parser.add_argument("--split-aa", action="store_true", help="Crear con_aa.xlsx y sin_aa.xlsx por separado")
     parser.add_argument("--progress", action="store_true", help="Mostrar barra de progreso")
     parser.add_argument("--diff", action="store_true", help="Mostrar diferencias entre ultima y penultima auditoria")
     parser.add_argument("--config", help="Archivo JSON con config (workers, proxy, retry, etc)")
@@ -897,23 +964,33 @@ async def amain():
     # ── Excel: --urls → multi-sheet historial | --input → clasico ──
     audit_date = None  # flag: multi-sheet mode
     if args.urls:
-        output_path = args.output or "historial.xlsx"
+        if args.market:
+            market_dir = args.market.upper()
+            os.makedirs(market_dir, exist_ok=True)
+            output_path = args.output or f"{market_dir}/historial.xlsx"
+        else:
+            output_path = args.output or "historial.xlsx"
         wb, ws, audit_date, skipped = setup_multisheet(output_path, args.urls, args.resume)
         if skipped:
             logging.info("Sheet de hoy ya auditado. Usá --diff para ver diferencias.")
             return 0
         with open(args.urls, encoding="utf-8") as f:
             entries = json.load(f)
-        for i, entry in enumerate(entries, start=2):
+        row = 2
+        for entry in entries:
             if isinstance(entry, str):
                 name = url = entry
             elif isinstance(entry, dict):
+                if args.market and entry.get("market", "").upper() != args.market.upper():
+                    continue
                 name = entry.get("nombre", entry.get("url", ""))
                 url = entry.get("url", "")
             wrap = Alignment(wrap_text=True, vertical="top")
-            ws.cell(i, 1).value = name; ws.cell(i, 1).alignment = wrap
-            ws.cell(i, 2).value = url; ws.cell(i, 2).alignment = wrap
-        logging.info("Multi-sheet %s: %d URLs", audit_date, len(entries))
+            ws.cell(row, 1).value = name; ws.cell(row, 1).alignment = wrap
+            ws.cell(row, 2).value = url; ws.cell(row, 2).alignment = wrap
+            row += 1
+        total_filtradas = row - 2
+        logging.info("Multi-sheet %s: %d URLs (filtradas: %d)", audit_date, total_filtradas, len(entries))
     else:
         output_path = args.output or args.input
         # ── Cargar Excel existente ──
@@ -1064,6 +1141,7 @@ async def amain():
         update_vars_sheet(wb, audit_date, aa_data)
 
     # ── Guardado final + _control (multi-sheet) ──
+    apply_data_fills(ws)
     _set_col_widths(ws)
     total_time = time.time() - start_time
     score = compute_score(metrics)
@@ -1085,6 +1163,12 @@ async def amain():
             logging.warning("No se pudo crear backup: %s", e)
 
     out = save_workbook(wb, output_path)
+
+    # ── Split AA (con_aa / sin_aa) ──
+    if args.split_aa and audit_date:
+        output_dir = os.path.dirname(output_path) or "."
+        split_aa_workbooks(wb, audit_date, output_dir)
+
     wb.close()
     logging.info("Guardado: %s", out)
 
