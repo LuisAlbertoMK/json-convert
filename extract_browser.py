@@ -38,11 +38,85 @@ import os
 import re
 import sys
 import time
+import signal
 import subprocess
 import logging
 from copy import copy
 from datetime import datetime, timedelta
 from urllib.parse import urlparse, parse_qs
+
+# ── Graceful shutdown ──
+_shutdown_flag = False
+"""Global flag: set by signal handler to request graceful shutdown."""
+
+def _request_shutdown(signum=None, frame=None):
+    global _shutdown_flag
+    if not _shutdown_flag:
+        _shutdown_flag = True
+        logging.warning("Señal %s recibida. Terminando gracefulmente...", signum)
+
+# ── Validation & sanitization ──
+
+VALID_URL_SCHEMES = ("http", "https")
+"""Schemes permitidos para navegación."""
+
+# Dominios conocidos del proyecto Ford preview + Adobe
+ALLOWED_HOSTNAME_SUFFIXES = (
+    ".ford.com",
+    ".brandpr.ford.com",
+    ".omtrdc.net",
+    ".adobedc.net",
+    "2o7.net",
+)
+
+def validate_url(url: str) -> str | None:
+    """Valida URL antes de navegar. Retorna mensaje de error o None si OK."""
+    if not url or not isinstance(url, str):
+        return "URL vacía o inválida"
+    url = url.strip()
+    if not url:
+        return "URL vacía después de trim"
+    try:
+        parsed = urlparse(url)
+    except Exception as e:
+        return f"URL no parseable: {e}"
+    if parsed.scheme not in VALID_URL_SCHEMES:
+        return f"Scheme '{parsed.scheme}' no permitido (solo http/https)"
+    if not parsed.netloc:
+        return "URL sin hostname"
+    # Chequeo de SSRF básico: solo dominios conocidos
+    hostname = parsed.netloc.lower()
+    # Remover user:password@ si existe
+    if "@" in hostname:
+        hostname = hostname.split("@")[-1]
+    # Remover :puerto si existe
+    if ":" in hostname:
+        hostname = hostname.split(":")[0]
+    if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
+        return "URL apunta a localhost (posible SSRF)"
+    if not hostname.endswith(ALLOWED_HOSTNAME_SUFFIXES):
+        return f"Dominio '{hostname}' no está en la whitelist de proyectos"
+    return None
+
+def sanitize_url_for_log(url: str, max_len: int = 80) -> str:
+    """Limpia URL para logging: trunca y redacta query params sensibles.
+    
+    Redacta valores de query params que podrían contener PII (email, token, etc).
+    """
+    if not url:
+        return ""
+    try:
+        parsed = urlparse(url)
+        if parsed.query:
+            qs = parse_qs(parsed.query)
+            sensitive_keys = {"email", "token", "key", "secret", "password", "pass", "auth"}
+            cleaned = {k: ("[REDACTED]" if k.lower() in sensitive_keys else v[0][:60])
+                       for k, v in qs.items()}
+            base = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"[:max_len]
+            return f"{base}?{cleaned}" if cleaned else base
+        return url[:max_len]
+    except Exception:
+        return url[:max_len]
 
 import openpyxl
 from openpyxl.styles import Alignment, PatternFill
@@ -303,7 +377,7 @@ async def process_url(
 
     page.on("request", on_beacon)
 
-    result = {"row": row, "url": url, "status": 0, "error": None,
+    result = {"row": row, "url": url, "status": 0, "error": None, "code": None,
               "title": "", "digitaldata": None, "aa_parsed": None,
               "aa_source": None, "extra_beacons": [], "elapsed_s": 0.0,
               "retries_used": 0}
@@ -327,9 +401,11 @@ async def process_url(
         except PwTimeout:
             result["status"] = -1
             result["error"] = "timeout"
+            result["code"] = "TIMEOUT"
         except Exception as e:
             result["status"] = -2
             result["error"] = str(e)[:120]
+            result["code"] = _error_code_from_detail(str(e))
             logging.error("Error navegando fila %d: %s", row, e)
 
         if attempt < max_retry and result["status"] in (-1, -2):
@@ -357,6 +433,7 @@ async def process_url(
 
     if not result["aa_parsed"] and not result["error"]:
         result["error"] = "no AA data captured"
+        result["code"] = "NO_AA_DATA"
 
     result["elapsed_s"] = round(time.time() - t0, 1)
     return result
@@ -404,7 +481,8 @@ async def write_result(
         meta = {"score": url_score, "status": result["status"],
                 "aa_source": result["aa_source"],
                 "beacons": n_beacons, "title": result["title"],
-                "error": result.get("error"), "elapsed_s": result["elapsed_s"],
+                "error": result.get("error"), "code": result.get("code"),
+                "elapsed_s": result["elapsed_s"],
                 "url": result["url"][:120]}
         if result.get("extra_beacons"):
             meta["extra_beacons"] = result["extra_beacons"]
@@ -446,8 +524,42 @@ def print_progress(done: int, total: int, errors: int, workers: int):
 # ERROR CLASSIFICATION
 # ═══════════════════════════════════════════════════════════════════════════
 
+# ── Códigos de error estándar ──
+ERROR_CODES = {
+    "TIMEOUT":       "Tiempo de espera agotado al navegar",
+    "HTTP_403":      "Acceso denegado (HTTP 403)",
+    "HTTP_ERROR":    "Error HTTP al navegar",
+    "NO_AA_DATA":    "No se capturó data de Adobe Analytics",
+    "URL_INVALID":   "URL no válida o no permitida",
+    "NETWORK_ERROR": "Error de red o conexión fallida",
+    "NAV_ERROR":     "Error durante la navegación",
+    "UNKNOWN":       "Error desconocido",
+}
+
+def _error_code_from_detail(err: str) -> str:
+    """Asigna código de error estándar según el texto del error."""
+    if not err:
+        return "UNKNOWN"
+    err_lower = err.lower()
+    if "timeout" in err_lower:
+        return "TIMEOUT"
+    if "403" in err:
+        return "HTTP_403"
+    if "no aa" in err_lower or "no AA" in err:
+        return "NO_AA_DATA"
+    if "url_invalid" in err_lower or "url inv" in err_lower:
+        return "URL_INVALID"
+    if "network" in err_lower or "connection" in err_lower or "dns" in err_lower:
+        return "NETWORK_ERROR"
+    if "naveg" in err_lower or "nav" in err_lower:
+        return "NAV_ERROR"
+    return "NETWORK_ERROR"
+
+
 def classify_errors(errors_detail: list[dict]) -> dict[str, list[int]]:
-    """Agrupa errores por categoría para output legible."""
+    """Agrupa errores por categoría para output legible.
+    Usa código estándar si está presente, o lo deduce del texto.
+    """
     categories = {
         "HTTP 403 (acceso denegado)": [],
         "Timeout": [],
@@ -455,16 +567,18 @@ def classify_errors(errors_detail: list[dict]) -> dict[str, list[int]]:
         "Error de red/conexión": [],
     }
     for e in errors_detail:
+        code = e.get("code", _error_code_from_detail(e.get("error", "")))
         err = e.get("error", "")
-        if "timeout" in err.lower():
+        if code == "TIMEOUT":
             categories["Timeout"].append(e["row"])
-        elif "403" in err:
+        elif code == "HTTP_403" or "403" in err:
             categories["HTTP 403 (acceso denegado)"].append(e["row"])
-        elif "no aa" in err.lower() or "no AA" in err:
+        elif code in ("NO_AA_DATA",):
             categories["Sin dato AA (no beacon)"].append(e["row"])
+        elif code == "URL_INVALID":
+            pass  # ya se reportó en validación
         else:
             categories["Error de red/conexión"].append(e["row"])
-    # Filtrar vacías
     return {k: v for k, v in categories.items() if v}
 
 
@@ -659,6 +773,8 @@ async def amain():
     parser.add_argument("--progress", action="store_true", help="Mostrar barra de progreso")
     parser.add_argument("--diff", action="store_true", help="Mostrar diferencias entre ultima y penultima auditoria")
     parser.add_argument("--config", help="Archivo JSON con config (workers, proxy, retry, etc)")
+    parser.add_argument("--backup", action="store_true", help="Crear backup del Excel antes de escribir")
+    parser.add_argument("--diagnostic", action="store_true", help="Verificar entorno sin navegar (Python, Playwright, Chromium)")
     parser.add_argument("--retry-failed", action="store_true", help="Solo URLs con error en corridas anteriores")
     args = parser.parse_args()
 
@@ -681,6 +797,65 @@ async def amain():
         log_handlers.append(logging.FileHandler(args.log_file, encoding="utf-8"))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s",
                         handlers=log_handlers)
+
+    # ── --diagnostic: verificar entorno sin navegar ──
+    if args.diagnostic:
+        print(f"\n{'='*55}")
+        print("  DIAGNÓSTICO DEL ENTORNO")
+        print(f"{'='*55}")
+        ok = True
+        # Python
+        py_ver = sys.version.split()[0]
+        print(f"  Python:           {py_ver}")
+        try:
+            import playwright
+            print(f"  Playwright:       {playwright.__version__}")
+        except ImportError:
+            print("  Playwright:       ❌ No instalado (pip install playwright)")
+            ok = False
+        try:
+            import openpyxl
+            print(f"  openpyxl:         {openpyxl.__version__}")
+        except ImportError:
+            print("  openpyxl:         ❌ No instalado (pip install openpyxl)")
+            ok = False
+        # Chromium
+        import subprocess, shutil
+        chromium_path = shutil.which("chromium") or os.environ.get("PLAYWRIGHT_CHROMIUM_PATH")
+        if chromium_path:
+            print(f"  Chromium:         {chromium_path}")
+        else:
+            # Revisar ruta por defecto de Playwright en Windows
+            default_path = os.path.expandvars(r"%USERPROFILE%\AppData\Local\ms-playwright")
+            alt_path = os.path.expandvars(r"%LOCALAPPDATA%\ms-playwright")
+            found = None
+            for p in (default_path, alt_path):
+                if os.path.isdir(p):
+                    entries = [d for d in os.listdir(p) if d.startswith("chromium")]
+                    if entries:
+                        found = os.path.join(p, entries[0])
+                        break
+            if found:
+                print(f"  Chromium:         {found}")
+            else:
+                print("  Chromium:         ❌ No encontrado (ejecutá: python -m playwright install chromium)")
+                ok = False
+        # Archivo de entrada
+        input_path = args.input or INPUT_FILE
+        if os.path.exists(input_path):
+            print(f"  Input Excel:      {input_path} ({os.path.getsize(input_path)} bytes)")
+        else:
+            print(f"  Input Excel:      {input_path} → No encontrado (se creará si usás --urls)")
+        # Conectividad proxy
+        if args.proxy:
+            print(f"  Proxy:            {args.proxy}")
+        print(f"\n  {'='*55}")
+        if ok:
+            print("  ✅ Entorno OK. Listo para navegar.")
+        else:
+            print("  ⚠️  Hay problemas que resolver antes de navegar.")
+        print(f"  {'='*55}\n")
+        return 0 if ok else 1
 
     # ── --diff: comparar ultimas 2 auditorias (sin procesar) ──
     if args.diff and not args.urls:
@@ -797,7 +972,8 @@ async def amain():
         wb.close()
         return
 
-    logging.info("URLs a procesar: %d | Workers: %d", len(rows_to_process), args.workers)
+    logging.info("URLs a procesar: %d | Workers: %d | Backup: %s",
+                 len(rows_to_process), args.workers, getattr(args, 'backup', False))
 
     metrics = {"total": len(rows_to_process), "ok_aa": 0, "ok_dd": 0,
                "errors": 0, "retries": 0, "total_beacons": 0, "times": [],
@@ -833,10 +1009,11 @@ async def amain():
                     max_retry=args.retry,
                 )
                 status_str = f"HTTP {result['status']}" if result['status'] > 0 else f"ERR {result['status']}"
-                logging.info("Fila %d | %s | AA: %s | %.1fs",
+                log_url = sanitize_url_for_log(url)
+                logging.info("Fila %d | %s | AA: %s | %.1fs | %s",
                              row, status_str,
                              result["aa_source"] or "none",
-                             result["elapsed_s"])
+                             result["elapsed_s"], log_url)
                 await write_result(ws, result, metrics, excel_lock, output_path, saved_count,
                                      show_progress=args.progress,
                                      total_urls=len(rows_to_process),
@@ -848,10 +1025,31 @@ async def amain():
                 await ctx.close()
 
         async def worker_sem(row: int, url: str):
+            if _shutdown_flag:
+                return
             async with sem:
+                if _shutdown_flag:
+                    return
                 await worker(row, url)
 
-        tasks = [worker_sem(row, url) for row, url in rows_to_process]
+        # Filtrar URLs que no pasan validación
+        valid_rows = []
+        for row, url in rows_to_process:
+            err = validate_url(url)
+            if err:
+                logging.error("Fila %d: URL inválida (%s): %s", row, err, sanitize_url_for_log(url))
+                metrics["errors"] += 1
+                metrics["errores_detalle"].append({"row": row, "error": err})
+                ws.cell(row, 5).value = f"(URL inválida: {err})"
+                ws.cell(row, 7).value = _pretty_json({"error": err, "url": url[:80], "code": "URL_INVALID"})
+            else:
+                valid_rows.append((row, url))
+
+        # Omitir si todas las URLs son inválidas
+        if not valid_rows:
+            logging.warning("No hay URLs válidas para procesar.")
+
+        tasks = [worker_sem(row, url) for row, url in valid_rows]
         await asyncio.gather(*tasks)
 
         await browser.close()
@@ -870,6 +1068,17 @@ async def amain():
                        metrics["ok_aa"], metrics["ok_dd"],
                        metrics["errors"], metrics["retries"],
                        score, total_time, args.workers)
+
+    # --backup: copiar el archivo existente antes de sobrescribir
+    if args.backup and os.path.exists(output_path):
+        backup_name = f"{output_path}.{datetime.now().strftime('%Y%m%d_%H%M%S')}.bak"
+        try:
+            import shutil
+            shutil.copy2(output_path, backup_name)
+            logging.info("Backup creado: %s", backup_name)
+        except Exception as e:
+            logging.warning("No se pudo crear backup: %s", e)
+
     out = save_workbook(wb, output_path)
     wb.close()
     logging.info("Guardado: %s", out)
@@ -934,7 +1143,18 @@ async def amain():
 
 
 def main():
-    asyncio.run(amain())
+    # Registrar signal handler para graceful shutdown
+    try:
+        signal.signal(signal.SIGINT, _request_shutdown)
+        signal.signal(signal.SIGTERM, _request_shutdown)
+    except (ValueError, AttributeError):
+        pass  # no siempre disponible (ej: threads)
+    try:
+        asyncio.run(amain())
+    except KeyboardInterrupt:
+        _request_shutdown()
+        logging.warning("Interrumpido por usuario.")
+        sys.exit(130)
 
 
 if __name__ == "__main__":

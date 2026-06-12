@@ -16,3 +16,7 @@ Thumbs.db
 
 # Generado
 urls.json
+
+# Entorno local (no comitear)
+.env
+.history/
