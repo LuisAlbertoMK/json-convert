@@ -53,6 +53,17 @@ PR/
 
 Each file has colored headers + data fills (green/red/yellow) matching column purpose.
 
+### Generating urls.json from Excel
+
+```bash
+# Basic: extract URLs from RevisionManual.xlsx → urls.json
+python _gen_urls.py
+
+# With market assignment (all URLs get "market": "PR")
+python _gen_urls.py --input RevisionManual_PR.xlsx --default-market PR
+python _gen_urls.py --input RevisionManual_MX.xlsx --default-market MX
+```
+
 ### Post-processing
 
 ```bash

@@ -56,6 +56,7 @@
 | `--wait-after` | extract_browser | Espera post-carga configurable (default: 4s) |
 | `--score` | extract_aa | Métricas detalladas por fila |
 | `--keep` | extract_aa | Filtrar campos AA extraídos |
+| `--default-market` | _gen_urls | Asignar market a todas las URLs extraídas |
 
 ## Score por URL (compute_url_score)
 
