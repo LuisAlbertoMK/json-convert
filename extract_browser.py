@@ -23,7 +23,7 @@ Uso:
   python extract_browser.py                                       # RevisionManual.xlsx
   python extract_browser.py --input otro.xlsx --output res.xlsx
   python extract_browser.py --row 3 --headed
-  python extract_browser.py --resume --discard-cookies
+  python extract_browser.py --resume --wait-after 5
   python extract_browser.py --log-file audit.log --proxy http://proxy:8080
   python extract_browser.py --run-clean
   python extract_browser.py --verbose                               # logging debug
@@ -359,7 +359,7 @@ def save_workbook(wb, path):
 
 async def process_url(
     page, row: int, url: str,
-    discard_cookies: bool = False,
+    wait_after: int = 4,
     timeout_ms: int = 35000,
     max_retry: int = 1,
 ) -> dict:
@@ -389,12 +389,11 @@ async def process_url(
     for attempt in range(1 + max_retry):
         try:
             resp = await page.goto(url, wait_until="load", timeout=timeout_ms)
-            await asyncio.sleep(2)
+            await asyncio.sleep(wait_after)
             if resp:
                 result["status"] = resp.status
 
-            if discard_cookies:
-                await try_dismiss_cookie_consent(page)
+            await try_dismiss_cookie_consent(page)
 
             result["title"] = await extract_title(page)
             result["digitaldata"] = await extract_digital_data(page)
@@ -772,7 +771,8 @@ async def amain():
     parser.add_argument("--proxy", help="Proxy HTTP (ej: http://proxy:8080)")
     parser.add_argument("--retry", type=int, default=1, help="Reintentos por URL")
     parser.add_argument("--workers", type=int, default=1, help="URLs concurrentes (default: 1)")
-    parser.add_argument("--discard-cookies", action="store_true", help="Rechazar banners de cookies")
+    parser.add_argument("--discard-cookies", action="store_true", help="[obsoleto] ahora siempre se intenta cerrar el banner de cookies")
+    parser.add_argument("--wait-after", type=int, default=4, help="Segundos a esperar tras cargar la pagina (default: 4)")
     parser.add_argument("--progress", action="store_true", help="Mostrar barra de progreso")
     parser.add_argument("--diff", action="store_true", help="Mostrar diferencias entre ultima y penultima auditoria")
     parser.add_argument("--config", help="Archivo JSON con config (workers, proxy, retry, etc)")
@@ -1009,7 +1009,7 @@ async def amain():
             try:
                 result = await process_url(
                     page, row, url,
-                    discard_cookies=args.discard_cookies,
+                    wait_after=args.wait_after,
                     timeout_ms=args.timeout,
                     max_retry=args.retry,
                 )
