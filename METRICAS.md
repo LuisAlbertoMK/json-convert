@@ -10,6 +10,7 @@
 | Fecha | Rama | Score | AA% | DD% | Prom./URL | Tests | Notas |
 |-------|------|-------|-----|-----|-----------|-------|-------|
 | 2026-06-12 | master | — | — | — | — | 72 ✅ | Baseline post-roadmap |
+| 2026-06-12 | master | — | — | — | — | **93 ✅** | +21 integration tests (Excel pipeline, config, write_result, classify) |
 
 ## Cobertura de Pilares (Framework v2.0)
 
@@ -66,6 +67,7 @@
 | Fecha | Cambio | Delta tests | Impacto |
 |-------|--------|-------------|---------|
 | 2026-06-12 | --verbose, extract_aa logging, score fix, 41 tests nuevos | +0 → 72 ✅ | Calidad código + observabilidad |
+| 2026-06-12 | 21 integration tests (Excel pipeline, config, write_result) | 72 → **93 ✅** | Cobertura pipeline completo |
 
 ---
 
