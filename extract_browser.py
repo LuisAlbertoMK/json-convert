@@ -138,6 +138,7 @@ def _set_col_widths(ws):
 def _write_cell(ws, row, col, value, wrap=True):
     cell = ws.cell(row, col)
     cell.value = value
+    cell.number_format = "@"  # texto plano — evita que Excel interprete JSON como numero/fecha
     cell.alignment = Alignment(wrap_text=True, vertical="top")
 SAVE_EVERY_N = 5  # guardado incremental cada N URLs
 

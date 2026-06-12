@@ -166,6 +166,7 @@ def main():
         pretty = json.dumps(extracted, indent=2, ensure_ascii=False)
         cell = ws.cell(row, 6)
         cell.value = pretty
+        cell.number_format = "@"  # texto plano — evita que Excel interprete JSON como numero/fecha
         cell.alignment = Alignment(wrap_text=True, vertical="top")
         cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
         total += 1
