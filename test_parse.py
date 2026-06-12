@@ -20,7 +20,12 @@ import os
 
 # Importar funciones del script principal
 sys.path.insert(0, os.path.dirname(__file__))
-from extract_browser import parse_aa_beacon, build_aa_from_s
+from extract_browser import (
+    parse_aa_beacon, build_aa_from_s,
+    validate_url, sanitize_url_for_log,
+    _error_code_from_detail, classify_errors,
+    compute_score, compute_url_score,
+)
 from extract_aa import extract_fields
 
 
@@ -384,6 +389,318 @@ class TestExtractFields(unittest.TestCase):
         self.assertEqual(result["events"], ["event1"])
         self.assertNotIn("props", result)
         self.assertNotIn("eVars", result)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TESTS: validate_url
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestValidateUrl(unittest.TestCase):
+    """Tests para validate_url()."""
+
+    def test_valid_https_ford(self):
+        """URL HTTPS a ford.com es válida."""
+        self.assertIsNone(validate_url("https://www.ford.com/es/mustang"))
+
+    def test_valid_https_preview(self):
+        """URL HTTPS a preview.ford.com es válida."""
+        self.assertIsNone(validate_url("https://brandpr.ford.com/preview/mach-e"))
+
+    def test_empty_url(self):
+        """URL vacía retorna error."""
+        self.assertIsNotNone(validate_url(""))
+        self.assertIsNotNone(validate_url(None))  # type: ignore
+
+    def test_invalid_scheme_ftp(self):
+        """Scheme FTP no permitido."""
+        err = validate_url("ftp://ford.com/file.txt")
+        self.assertIsNotNone(err)
+        self.assertIn("Scheme", err or "")
+
+    def test_no_hostname(self):
+        """URL sin hostname retorna error."""
+        err = validate_url("http:///path")
+        self.assertIsNotNone(err)
+        self.assertIn("hostname", err or "")
+
+    def test_localhost_blocked(self):
+        """localhost bloqueado por SSRF."""
+        err = validate_url("http://localhost:8080/audit")
+        self.assertIsNotNone(err)
+        self.assertIn("SSRF", err or "")
+
+    def test_loopback_blocked(self):
+        """127.0.0.1 bloqueado."""
+        err = validate_url("http://127.0.0.1/secret")
+        self.assertIsNotNone(err)
+        self.assertIn("SSRF", err or "")
+
+    def test_domain_not_in_whitelist(self):
+        """Dominio externo no permitido."""
+        err = validate_url("https://evil.com/phish")
+        self.assertIsNotNone(err)
+        self.assertIn("whitelist", err or "")
+
+    def test_url_with_credentials(self):
+        """URL con user:password se parsea ok."""
+        err = validate_url("https://user:pass@brandpr.ford.com/preview")
+        self.assertIsNone(err)
+
+    def test_url_with_port(self):
+        """URL con puerto se parsea ok."""
+        err = validate_url("https://brandpr.ford.com:8443/preview")
+        self.assertIsNone(err)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TESTS: sanitize_url_for_log
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestSanitizeUrl(unittest.TestCase):
+    """Tests para sanitize_url_for_log()."""
+
+    def test_empty_url(self):
+        """URL vacía retorna string vacío."""
+        self.assertEqual(sanitize_url_for_log(""), "")
+
+    def test_no_sensitive_params(self):
+        """URL sin params sensibles pasa limpia (truncada)."""
+        url = "https://brandpr.ford.com/preview/mach-e"
+        result = sanitize_url_for_log(url, max_len=100)
+        self.assertIn("ford.com", result)
+        self.assertNotIn("[REDACTED]", result)
+
+    def test_email_redacted(self):
+        """Query param 'email' se redacta."""
+        url = "https://brandpr.ford.com/preview?email=john.doe@ford.com&token=abc123&page=1"
+        result = sanitize_url_for_log(url)
+        self.assertIn("[REDACTED]", result)
+        self.assertNotIn("john.doe", result)
+        self.assertNotIn("abc123", result)
+
+    def test_password_redacted(self):
+        """Query param 'password' se redacta."""
+        url = "https://brandpr.ford.com/login?password=supersecret&user=admin"
+        result = sanitize_url_for_log(url, max_len=120)
+        self.assertIn("[REDACTED]", result)
+
+    def test_max_len_truncation(self):
+        """URL se trunca a max_len."""
+        url = "https://brandpr.ford.com/" + "a" * 200
+        result = sanitize_url_for_log(url, max_len=50)
+        self.assertLessEqual(len(result), 50)
+
+    def test_none_url(self):
+        """None retorna string vacío."""
+        self.assertEqual(sanitize_url_for_log(None), "")  # type: ignore
+
+    def test_invalid_url_no_crash(self):
+        """URL malformada no causa excepción."""
+        result = sanitize_url_for_log("not a url at all!!!")
+        self.assertIsInstance(result, str)
+        self.assertTrue(len(result) > 0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TESTS: _error_code_from_detail
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestErrorCodeFromDetail(unittest.TestCase):
+    """Tests para _error_code_from_detail()."""
+
+    def test_timeout(self):
+        """Texto con timeout → TIMEOUT."""
+        self.assertEqual(_error_code_from_detail("Timeout after 30000ms"), "TIMEOUT")
+        self.assertEqual(_error_code_from_detail("timeout navegando"), "TIMEOUT")
+
+    def test_http_403(self):
+        """Texto con 403 → HTTP_403."""
+        self.assertEqual(_error_code_from_detail("HTTP 403 Forbidden"), "HTTP_403")
+        self.assertEqual(_error_code_from_detail("Error 403"), "HTTP_403")
+
+    def test_no_aa(self):
+        """Texto con 'no AA' → NO_AA_DATA."""
+        self.assertEqual(_error_code_from_detail("no AA data found"), "NO_AA_DATA")
+        self.assertEqual(_error_code_from_detail("No AA beacon detected"), "NO_AA_DATA")
+
+    def test_url_invalid(self):
+        """Texto con URL invalid → URL_INVALID."""
+        self.assertEqual(_error_code_from_detail("url_invalid: bad host"), "URL_INVALID")
+        self.assertEqual(_error_code_from_detail("URL inválida"), "URL_INVALID")
+
+    def test_network_error(self):
+        """Texto con network/connection → NETWORK_ERROR."""
+        self.assertEqual(_error_code_from_detail("Network error"), "NETWORK_ERROR")
+        self.assertEqual(_error_code_from_detail("connection refused"), "NETWORK_ERROR")
+        self.assertEqual(_error_code_from_detail("DNS resolution failed"), "NETWORK_ERROR")
+
+    def test_nav_error(self):
+        """Texto con naveg/nav → NAV_ERROR."""
+        self.assertEqual(_error_code_from_detail("navegación fallida"), "NAV_ERROR")
+        self.assertEqual(_error_code_from_detail("Navigation error"), "NAV_ERROR")
+
+    def test_empty_string(self):
+        """String vacío → UNKNOWN."""
+        self.assertEqual(_error_code_from_detail(""), "UNKNOWN")
+
+    def test_none_string(self):
+        """None → UNKNOWN."""
+        self.assertEqual(_error_code_from_detail(None), "UNKNOWN")  # type: ignore
+
+    def test_unknown_error(self):
+        """Texto genérico → NETWORK_ERROR (fallback)."""
+        self.assertEqual(_error_code_from_detail("something weird happened"), "NETWORK_ERROR")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TESTS: classify_errors
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestClassifyErrors(unittest.TestCase):
+    """Tests para classify_errors()."""
+
+    def test_empty_list(self):
+        """Lista vacía → dict vacío."""
+        self.assertEqual(classify_errors([]), {})
+
+    def test_timeout_classified(self):
+        """Error TIMEOUT va a categoría Timeout."""
+        result = classify_errors([{"row": 3, "code": "TIMEOUT"}])
+        self.assertIn("Timeout", result)
+        self.assertEqual(result["Timeout"], [3])
+
+    def test_http403_classified(self):
+        """Error HTTP_403 va a categoría HTTP 403."""
+        result = classify_errors([{"row": 5, "code": "HTTP_403", "error": "403"}])
+        self.assertIn("HTTP 403 (acceso denegado)", result)
+        self.assertEqual(result["HTTP 403 (acceso denegado)"], [5])
+
+    def test_no_aa_classified(self):
+        """Error NO_AA_DATA va a categoría Sin dato AA."""
+        result = classify_errors([{"row": 7, "code": "NO_AA_DATA"}])
+        self.assertIn("Sin dato AA (no beacon)", result)
+        self.assertEqual(result["Sin dato AA (no beacon)"], [7])
+
+    def test_url_invalid_skipped(self):
+        """URL_INVALID se omite (ya reportado en validación)."""
+        result = classify_errors([{"row": 9, "code": "URL_INVALID"}])
+        self.assertNotIn("URL_INVALID", result)
+
+    def test_mixed_errors(self):
+        """Múltiples errores se agrupan correctamente."""
+        errors = [
+            {"row": 2, "code": "TIMEOUT"},
+            {"row": 3, "code": "HTTP_403", "error": "403"},
+            {"row": 5, "code": "NO_AA_DATA"},
+            {"row": 7, "code": "NETWORK_ERROR"},
+        ]
+        result = classify_errors(errors)
+        self.assertEqual(result.get("Timeout"), [2])
+        self.assertEqual(result.get("HTTP 403 (acceso denegado)"), [3])
+        self.assertEqual(result.get("Sin dato AA (no beacon)"), [5])
+        self.assertIn("Error de red/conexión", result)
+        self.assertEqual(result["Error de red/conexión"], [7])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TESTS: compute_score
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestComputeScore(unittest.TestCase):
+    """Tests para compute_score() y compute_url_score()."""
+
+    def test_perfect_score(self):
+        """100% éxito → score ~98 (tiempo 5s resta ~2 pts)."""
+        metrics = {
+            "total": 10, "ok_aa": 10, "ok_dd": 10,
+            "times": [5]*10, "total_beacons": 30, "retries": 0, "errors": 0,
+            "errores_detalle": [],
+        }
+        score = compute_score(metrics)
+        self.assertGreater(score, 90)
+        self.assertLessEqual(score, 100)
+
+    def test_zero_all(self):
+        """Sin datos → score bajo pero no crash."""
+        metrics = {
+            "total": 0, "ok_aa": 0, "ok_dd": 0,
+            "times": [], "total_beacons": 0, "retries": 0, "errors": 0,
+            "errores_detalle": [],
+        }
+        score = compute_score(metrics)
+        self.assertIsInstance(score, int)
+        self.assertGreaterEqual(score, 0)
+
+    def test_half_success(self):
+        """50% captura AA → score ~50."""
+        metrics = {
+            "total": 10, "ok_aa": 5, "ok_dd": 8,
+            "times": [10]*10, "total_beacons": 15, "retries": 2, "errors": 2,
+            "errores_detalle": [],
+        }
+        score = compute_score(metrics)
+        self.assertIsInstance(score, int)
+        self.assertGreater(score, 0)
+        self.assertLess(score, 100)
+
+    def test_fast_scores_higher(self):
+        """Misma captura, tiempo menor → score mayor."""
+        fast = {
+            "total": 5, "ok_aa": 5, "ok_dd": 5,
+            "times": [3]*5, "total_beacons": 15, "retries": 0, "errors": 0,
+            "errores_detalle": [],
+        }
+        slow = {
+            "total": 5, "ok_aa": 5, "ok_dd": 5,
+            "times": [55]*5, "total_beacons": 15, "retries": 0, "errors": 0,
+            "errores_detalle": [],
+        }
+        fast_score = compute_score(fast)
+        slow_score = compute_score(slow)
+        self.assertGreater(fast_score, slow_score,
+                           f"fast={fast_score} should be > slow={slow_score}")
+
+    def test_retries_penalize(self):
+        """Más reintentos → score menor."""
+        low_retry = {
+            "total": 10, "ok_aa": 8, "ok_dd": 8,
+            "times": [10]*10, "total_beacons": 20, "retries": 0, "errors": 2,
+            "errores_detalle": [],
+        }
+        high_retry = {
+            "total": 10, "ok_aa": 8, "ok_dd": 8,
+            "times": [10]*10, "total_beacons": 20, "retries": 5, "errors": 2,
+            "errores_detalle": [],
+        }
+        self.assertGreater(compute_score(low_retry), compute_score(high_retry))
+
+
+class TestComputeUrlScore(unittest.TestCase):
+    """Tests para compute_url_score()."""
+
+    def test_perfect_url(self):
+        """URL con todo OK → 100."""
+        result = {"digitaldata": {"page": "ok"}, "aa_parsed": {"events": []},
+                   "extra_beacons": [{}], "error": None, "status": 200, "elapsed_s": 3}
+        self.assertEqual(compute_url_score(result), 100)
+
+    def test_no_data(self):
+        """URL sin datos → 0."""
+        result = {"digitaldata": None, "aa_parsed": None,
+                   "extra_beacons": None, "error": "timeout", "status": -1, "elapsed_s": 99}
+        self.assertEqual(compute_url_score(result), 0)
+
+    def test_only_dd(self):
+        """Solo digitaldata → 30."""
+        result = {"digitaldata": {"page": "ok"}, "aa_parsed": None,
+                   "extra_beacons": None, "error": None, "status": 200, "elapsed_s": 3}
+        self.assertEqual(compute_url_score(result), 60)  # 30 dd + 20 no error + 10 fast
+
+    def test_slow_url_penalty(self):
+        """URL lenta (30s) → sin bonus rapidez."""
+        result = {"digitaldata": {"page": "ok"}, "aa_parsed": {"events": []},
+                   "extra_beacons": None, "error": None, "status": 200, "elapsed_s": 30}
+        self.assertEqual(compute_url_score(result), 80)  # 30 dd + 30 aa + 20 no error (sin extra, slow)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

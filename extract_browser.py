@@ -26,6 +26,7 @@ Uso:
   python extract_browser.py --resume --discard-cookies
   python extract_browser.py --log-file audit.log --proxy http://proxy:8080
   python extract_browser.py --run-clean
+  python extract_browser.py --verbose                               # logging debug
 
 Requiere:
   pip install playwright openpyxl
@@ -592,10 +593,11 @@ def compute_score(metrics: dict) -> int:
     avg_time = sum(metrics["times"]) / max(len(metrics["times"]), 1)
     beacons_per_url = metrics["total_beacons"] / max(metrics["total"], 1)
     retry_efficiency = max(0, 1 - metrics["retries"] / max(metrics["total"], 1)) * 100
+    time_score = (1 - min(avg_time, 60) / 60) * 100  # más rápido → más score
     return int(
         success_rate * 0.40 +
         dd_rate * 0.25 +
-        min(avg_time, 60) / 60 * 100 * 0.15 +
+        max(time_score, 0) * 0.15 +
         min(beacons_per_url, 3) / 3 * 100 * 0.10 +
         retry_efficiency * 0.10
     )
@@ -776,6 +778,7 @@ async def amain():
     parser.add_argument("--backup", action="store_true", help="Crear backup del Excel antes de escribir")
     parser.add_argument("--diagnostic", action="store_true", help="Verificar entorno sin navegar (Python, Playwright, Chromium)")
     parser.add_argument("--retry-failed", action="store_true", help="Solo URLs con error en corridas anteriores")
+    parser.add_argument("--verbose", action="store_true", help="Logging detallado (debug)")
     args = parser.parse_args()
 
     # ── Cargar config desde JSON (si existe) ──
@@ -795,7 +798,8 @@ async def amain():
     log_handlers = [logging.StreamHandler(sys.stderr)]
     if args.log_file:
         log_handlers.append(logging.FileHandler(args.log_file, encoding="utf-8"))
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s",
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(level=log_level, format="%(asctime)s | %(levelname)s | %(message)s",
                         handlers=log_handlers)
 
     # ── --diagnostic: verificar entorno sin navegar ──

@@ -10,6 +10,7 @@ Uso:
   python extract_aa.py --keep all                               # TODO el JSON (solo pretty-print)
   python extract_aa.py --input historial.xlsx                   # otro archivo
   python extract_aa.py --score                                  # métricas detalladas
+  python extract_aa.py --verbose                               # logging debug
 
 Maneja 2 formatos detectados en col E:
   - Grupo 1 (filas 2-10): keys "eVars" + "props" con prop1/eVar1
@@ -17,6 +18,7 @@ Maneja 2 formatos detectados en col E:
 """
 
 import json
+import logging
 import os
 import sys
 import openpyxl
@@ -38,7 +40,7 @@ def _save_workbook(wb, path):
         name, ext = os.path.splitext(path)
         fallback = f"{name}_limpio{ext}"
         wb.save(fallback)
-        print(f"ADVERTENCIA: Archivo bloqueado, guardado como {fallback}")
+        logging.warning("Archivo bloqueado, guardado como %s", fallback)
         return fallback
 
 
@@ -89,7 +91,13 @@ def main():
     parser.add_argument("--keep", default=",".join(DEFAULT_KEEP),
                         help=f"Campos a conservar (separados por coma). Opciones: {','.join(ALL_FIELDS)}. Usar 'all' para todo.")
     parser.add_argument("--score", action="store_true", help="Mostrar metricas detalladas por fila")
+    parser.add_argument("--verbose", action="store_true", help="Logging detallado (debug)")
     args = parser.parse_args()
+
+    # ── Logging ──
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(level=log_level, format="%(asctime)s | %(levelname)s | %(message)s",
+                        handlers=[logging.StreamHandler(sys.stderr)])
 
     # Parsear keep
     if args.keep == "all":
@@ -99,8 +107,8 @@ def main():
         # Validar
         unknown = [k for k in keep if k not in ALL_FIELDS and k != "all"]
         if unknown:
-            print(f"ERROR: Campos desconocidos: {unknown}")
-            print(f"Opciones validas: {','.join(ALL_FIELDS)} o 'all'")
+            logging.error("Campos desconocidos: %s. Opciones validas: %s o 'all'",
+                          unknown, ','.join(ALL_FIELDS))
             sys.exit(1)
 
     wb = openpyxl.load_workbook(args.input)
@@ -108,7 +116,7 @@ def main():
     # Seleccionar sheet
     if args.sheet:
         if args.sheet not in wb.sheetnames:
-            print(f"ERROR: Sheet '{args.sheet}' no encontrado")
+            logging.error("Sheet '%s' no encontrado", args.sheet)
             sys.exit(1)
         ws = wb[args.sheet]
     else:
@@ -116,15 +124,15 @@ def main():
         candidates = [s for s in wb.sheetnames if s != "_control"]
         candidates.sort(key=lambda s: s if "-" in s else "0", reverse=True)
         if not candidates:
-            print("ERROR: No hay sheets de datos en el archivo")
+            logging.error("No hay sheets de datos en el archivo")
             sys.exit(1)
         ws = wb[candidates[0]]
-        print(f"Sheet auto-detectado: '{candidates[0]}'")
+        logging.info("Sheet auto-detectado: '%s'", candidates[0])
 
     # Validar col E
     e_header = str(ws.cell(1, 5).value or "").strip().lower()
     if e_header and "analytics" not in e_header:
-        print(f"ADVERTENCIA: Col E header no esperado: '{ws.cell(1, 5).value}'")
+        logging.warning("Col E header no esperado: '%s'", ws.cell(1, 5).value)
 
     total = 0
     errores = []
@@ -133,25 +141,26 @@ def main():
     for row in range(2, ws.max_row + 1):
         raw = ws.cell(row, 5).value  # col E
         if not raw:
-            errores.append((row, "col E vacia"))
+            errores.append((row, "COL_E_EMPTY", "col E vacia"))
             continue
 
         raw_str = str(raw).strip()
         if not raw_str or raw_str.startswith("(no") or raw_str.startswith("(error"):
-            errores.append((row, f"col E sin datos validos: {raw_str[:60]}"))
+            code = "NO_AA_DATA"
+            errores.append((row, code, f"col E sin datos validos: {raw_str[:60]}"))
             continue
 
         try:
             data = json.loads(raw_str)
         except json.JSONDecodeError as e:
-            errores.append((row, f"JSON invalido: {e}"))
+            errores.append((row, "JSON_INVALID", f"JSON invalido: {e}"))
             continue
 
         extracted = extract_fields(data, keep)
 
         # Si no se extrajo nada, avisar
         if not extracted:
-            errores.append((row, "ningun campo coincidio en el JSON origen"))
+            errores.append((row, "NO_FIELDS_MATCHED", "ningun campo coincidio en el JSON origen"))
             continue
 
         pretty = json.dumps(extracted, indent=2, ensure_ascii=False)
@@ -171,27 +180,27 @@ def main():
     out = _save_workbook(wb, args.input)
     wb.close()
 
-    print(f"Guardado: {out}")
-    print(f"OK Procesadas: {total} filas")
-    print(f"Campos extraidos: {keep}")
+    logging.info("Guardado: %s", out)
+    logging.info("OK Procesadas: %d filas", total)
+    logging.info("Campos extraidos: %s", keep)
 
     if args.score and stats_rows:
-        print(f"\n{'='*55}")
-        print(f"  MÉTRICAS POR FILA (--score)")
-        print(f"{'='*55}")
+        print(f"\n{'='*55}", file=sys.stderr)
+        print(f"  MÉTRICAS POR FILA (--score)", file=sys.stderr)
+        print(f"{'='*55}", file=sys.stderr)
         for s in stats_rows:
-            print(f"  Fila {s['row']}: campos={s['fields']}")
+            print(f"  Fila {s['row']}: campos={s['fields']}", file=sys.stderr)
             for k, v in s.items():
                 if k not in ("row", "fields"):
-                    print(f"    {k}: {v}")
-            print()
+                    print(f"    {k}: {v}", file=sys.stderr)
+            print(file=sys.stderr)
 
     if errores:
-        print(f"ERROR Errores: {len(errores)}")
-        for r, e in errores:
-            print(f"  Fila {r}: {e}")
+        logging.warning("Errores: %d", len(errores))
+        for r, code, msg in errores:
+            logging.debug("  Fila %d [%s]: %s", r, code, msg)
     else:
-        print("OK Sin errores")
+        logging.info("Sin errores")
 
 
 if __name__ == "__main__":
