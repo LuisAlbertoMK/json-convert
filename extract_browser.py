@@ -46,9 +46,23 @@ from urllib.parse import urlparse, parse_qs
 
 import openpyxl
 from openpyxl.styles import Alignment, PatternFill
+from openpyxl.utils import get_column_letter
 from playwright.async_api import async_playwright, TimeoutError as PwTimeout
 
 INPUT_FILE = "RevisionManual.xlsx"
+
+# ── Helpers de formato ──
+def _pretty_json(obj):
+    return json.dumps(obj, indent=2, ensure_ascii=False)
+
+def _set_col_widths(ws):
+    for col, w in [("A", 15), ("B", 15), ("D", 80), ("E", 100), ("F", 80), ("G", 60)]:
+        ws.column_dimensions[col].width = w
+
+def _write_cell(ws, row, col, value, wrap=True):
+    cell = ws.cell(row, col)
+    cell.value = value
+    cell.alignment = Alignment(wrap_text=True, vertical="top")
 SAVE_EVERY_N = 5  # guardado incremental cada N URLs
 
 AA_DOMAINS = [
@@ -82,14 +96,12 @@ def parse_aa_beacon(beacon_url: str, page_title: str = "") -> dict:
         report_suite = path_parts[3]
         hit_id = path_parts[-1] if len(path_parts) > 4 else ""
 
-    props = {}
+    props, evars = {}, {}
     for key, val in qs.items():
         m = re.match(r"^c(\d+)$", key)
         if m:
             props[f"prop{m.group(1)}"] = val[0]
-
-    evars = {}
-    for key, val in qs.items():
+            continue
         m = re.match(r"^v(\d+)$", key)
         if m:
             evars[f"eVar{m.group(1)}"] = val[0]
@@ -153,7 +165,7 @@ def build_aa_from_s(s_obj: dict, page_title: str = "") -> dict:
     for key, val in s_obj.items():
         m = re.match(r"^prop(\d+)$", key, re.IGNORECASE)
         if m:
-            props[f"prop{m.group(1)}"] = val; continue
+            props[f"prop{m.group(1)}"] = val
         m = re.match(r"^eVar(\d+)$", key, re.IGNORECASE)
         if m:
             evars[f"eVar{m.group(1)}"] = val
@@ -373,18 +385,14 @@ async def write_result(
         # digitaldata → col D (rojo: no relevante, sin fill)
         dd_val = result.get("digitaldata")
         if dd_val is not None:
-            cell = ws.cell(row, 4)
-            cell.value = json.dumps(dd_val, indent=2, ensure_ascii=False)
-            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            _write_cell(ws, row, 4, _pretty_json(dd_val))
             metrics["ok_dd"] += 1
         else:
             ws.cell(row, 4).value = "(no digitaldata)"
 
         # AA → col E (amarillo: media importancia, sin fill)
         if result.get("aa_parsed"):
-            cell = ws.cell(row, 5)
-            cell.value = json.dumps(result["aa_parsed"], indent=2, ensure_ascii=False)
-            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            _write_cell(ws, row, 5, _pretty_json(result["aa_parsed"]))
             metrics["ok_aa"] += 1
         else:
             ws.cell(row, 5).value = f"({result.get('error', 'no AA')})"
@@ -400,9 +408,7 @@ async def write_result(
                 "url": result["url"][:120]}
         if result.get("extra_beacons"):
             meta["extra_beacons"] = result["extra_beacons"]
-        cell = ws.cell(row, 7)
-        cell.value = json.dumps(meta, indent=2, ensure_ascii=False)
-        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        _write_cell(ws, row, 7, _pretty_json(meta))
 
         if result.get("error") or not result["aa_parsed"]:
             metrics["errors"] += 1
@@ -566,14 +572,9 @@ def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
     ws.append(SHEET_HEADERS)
     # Aplicar colores a headers
     for col_letter, fill in HEADER_FILLS.items():
-        col_idx = ord(col_letter) - 64  # A=1, B=2...
+        col_idx = openpyxl.utils.column_index_from_string(col_letter)
         ws.cell(1, col_idx).fill = fill
-    ws.column_dimensions["A"].width = 15
-    ws.column_dimensions["B"].width = 15
-    ws.column_dimensions["D"].width = 80
-    ws.column_dimensions["E"].width = 100
-    ws.column_dimensions["F"].width = 80
-    ws.column_dimensions["G"].width = 60
+    _set_col_widths(ws)
     return wb, ws, audit_date, False
 
 
@@ -606,7 +607,7 @@ def update_vars_sheet(wb, audit_date: str, rows_aa: list[tuple[int, dict]]):
         if audit_date not in existing_cols:
             new_col = vs.max_column + 1
             vs.cell(1, new_col).value = audit_date
-            vs.column_dimensions[chr(64 + new_col) if new_col <= 26 else "ZZ"].width = 40
+            vs.column_dimensions[get_column_letter(new_col)].width = 40
         next_row = vs.max_row + 1
 
     seen = {}
@@ -724,21 +725,14 @@ async def amain():
         with open(args.urls, encoding="utf-8") as f:
             entries = json.load(f)
         for i, entry in enumerate(entries, start=2):
-            wrap = Alignment(wrap_text=True, vertical="top")
             if isinstance(entry, str):
-                c1 = ws.cell(i, 1)
-                c1.value = entry
-                c1.alignment = wrap
-                c2 = ws.cell(i, 2)
-                c2.value = entry
-                c2.alignment = wrap
+                name = url = entry
             elif isinstance(entry, dict):
-                c1 = ws.cell(i, 1)
-                c1.value = entry.get("nombre", entry.get("url", ""))
-                c1.alignment = wrap
-                c2 = ws.cell(i, 2)
-                c2.value = entry.get("url", "")
-                c2.alignment = wrap
+                name = entry.get("nombre", entry.get("url", ""))
+                url = entry.get("url", "")
+            wrap = Alignment(wrap_text=True, vertical="top")
+            ws.cell(i, 1).value = name; ws.cell(i, 1).alignment = wrap
+            ws.cell(i, 2).value = url; ws.cell(i, 2).alignment = wrap
         logging.info("Multi-sheet %s: %d URLs", audit_date, len(entries))
     else:
         output_path = args.output or args.input
@@ -867,12 +861,7 @@ async def amain():
         update_vars_sheet(wb, audit_date, aa_data)
 
     # ── Guardado final + _control (multi-sheet) ──
-    ws.column_dimensions["A"].width = 15
-    ws.column_dimensions["B"].width = 15
-    ws.column_dimensions["D"].width = 80
-    ws.column_dimensions["E"].width = 100
-    ws.column_dimensions["F"].width = 80
-    ws.column_dimensions["G"].width = 60
+    _set_col_widths(ws)
     total_time = time.time() - start_time
     score = compute_score(metrics)
     if audit_date:

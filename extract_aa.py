@@ -17,6 +17,7 @@ Maneja 2 formatos detectados en col E:
 """
 
 import json
+import os
 import sys
 import openpyxl
 from openpyxl.styles import Alignment, PatternFill
@@ -27,6 +28,18 @@ ALL_FIELDS = [
     "browser", "events", "eVars", "evars", "props",
     "products", "frame", "adobe", "pageName", "channel", "page_attributes", "environment",
 ]
+
+
+def _save_workbook(wb, path):
+    try:
+        wb.save(path)
+        return path
+    except PermissionError:
+        name, ext = os.path.splitext(path)
+        fallback = f"{name}_limpio{ext}"
+        wb.save(fallback)
+        print(f"ADVERTENCIA: Archivo bloqueado, guardado como {fallback}")
+        return fallback
 
 
 def extract_fields(data: dict, keep: list[str]) -> dict:
@@ -155,14 +168,7 @@ def main():
     ws.column_dimensions["F"].width = 80
 
     # Guardar
-    out = args.input
-    try:
-        wb.save(out)
-    except PermissionError:
-        import os
-        name, ext = os.path.splitext(out)
-        out = f"{name}_limpio{ext}"
-        wb.save(out)
+    out = _save_workbook(wb, args.input)
     wb.close()
 
     print(f"Guardado: {out}")
