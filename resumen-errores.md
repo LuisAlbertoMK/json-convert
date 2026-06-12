@@ -1,54 +1,87 @@
 # Resumen de Errores — Extracción AA
 
-**Ejecución**: `extract_browser.py` sobre `audit_final.xlsx` (16 URLs)
-**Fecha**: 2026-06-12
-**Score global**: 46/100
+ADVERTENCIA: Documento vivo. Los fixes aplicados estan listos, pero el score real requiere re-ejecucion.
 
 ---
 
-## Totales
+## Linea base (historica)
 
-| Métrica | Valor |
+**Ejecucion**: `extract_browser.py` sobre `audit_final.xlsx` (16 URLs)
+**Fecha**: 2026-06-12
+**Score global**: 46/100
+
+| Metric | Valor |
 |---|---|
 | URLs procesadas | 16 |
 | AA capturados | 8 (50%) |
 | Errores | 8 |
 
-Todos los errores son del mismo tipo: **Sin dato AA (no beacon)**. Las páginas cargaron pero no emitieron ningún beacon de Adobe Analytics.
+Todos los errores: **Sin dato AA (no beacon)**.
+
+### URLs con error (linea base)
+
+| # | Dominio | URLs | Posible causa |
+|---|---------|------|---------------|
+| 6 | `brandpr.preview` (legal/privacy) | ES + EN | Preview sin AA, o carga condicional solo en prod |
+| 2 | `ford.mx` | autos, blog | GA4 en vez de Adobe, o bloqueo a headless |
+
+### URLs OK (linea base)
+
+Tips / Driving Precautions / Fuel Saving / Collision Repair - ES (filas 4-7) y EN (filas 8-11).
 
 ---
 
-## URLs con Error
+## Correcciones Aplicadas
 
-### brandpr.preview — Sin Adobe Analytics
+### 1. `UnboundLocalError` en cleanup
+- Fix: mover `import subprocess, shutil` a imports globales
+- Resultado: resuelto
 
-| Fila | Nombre | URL |
-|------|--------|-----|
-| 2 | Donativos Ambientales (ES) | `https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/donativos-ambientales.html` |
-| 3 | Environmental Grants (EN) | `https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/environmental-grants.html` |
-| 12 | Legal (ES) | `https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/legal.html` |
-| 13 | Privacy Policy (ES) | `https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/legal/privacy-policy.html` |
-| 14 | Legal (EN) | `https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/legal.html` |
-| 15 | Privacy Policy (EN) | `https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/legal/privacy-policy.html` |
+### 2. Cookie consent ahora siempre se intenta cerrar
+- Antes: opt-in con `--discard-cookies`
+- Ahora: se ejecuta `try_dismiss_cookie_consent()` en TODAS las URLs
+- Resultado: resuelto
 
-Posible causa: estas páginas en el entorno preview no tienen implementado Adobe Analytics, o el data layer se carga condicionalmente (solo en producción).
+### 3. `--wait-after` configurable (default: 4s)
+- Antes: `sleep(2)` hardcodeado
+- Ahora: `sleep(wait_after)`, default 4s, configurable por flag o `audit.json`
+- Resultado: resuelto
 
-### ford.mx — Sin Adobe Analytics
+### 4. `--market` + `--split-aa`
+- `urls.json` ahora tiene campo `"market"` en cada entrada
+- `--market PR` filtra y dirige output a `PR/historial.xlsx`
+- `--split-aa` genera `con_aa.xlsx` y `sin_aa.xlsx` por mercado
+- Resultado: resuelto
 
-| Fila | Nombre | URL |
-|------|--------|-----|
-| 16 | Ford MX Autos | `https://www.ford.mx/autos/` |
-| 17 | Ford MX Blog - Pasar Corriente | `https://www.ford.mx/blog/experto/instrucciones-pasar-corriente-auto-ago2020/` |
+### 5. Colores en celdas de datos
+- `apply_data_fills()` pinta: C verde, D rojo (si fallo), E amarillo, F verde
+- Resultado: resuelto
 
-Posible causa: el sitio ford.mx puede estar bloqueando el headless de Playwright, o usar un proveedor de analytics diferente a Adobe (GA4, etc.).
+### 6. Formato texto en celdas JSON
+- `number_format = "@"` en columnas D, E, F, G - evita que Excel interprete JSON como numero/fecha
+- Resultado: resuelto
 
 ---
 
-## URLs OK (con AA capturado)
+## Score: Pendiente de verificacion
 
-| Filas | Grupo |
-|-------|-------|
-| 4 – 7 | Tips / Driving Precautions / Fuel Saving / Collision Repair (ES) |
-| 8 – 11 | Tips / Driving Precautions / Collision Repair / Fuel Saving (EN) |
+Los fixes aplicados **deberian** mejorar el score, pero no se ha re-ejecutado para medirlo.
 
-Todas las URLs con AA exitoso son del entorno **brandpr preview** en las secciones de Tips/Consejos para dueños.
+| Fix | Impacto esperado |
+|-----|-----------------|
+| `wait_after: 4` (vs 2s) | Mas paginas alcanzan a emitir beacon AA |
+| Cookie consent siempre | Menos falsos NO_AA_DATA por banner bloqueando |
+| `--market PR` (excluye MX) | Score mas limpio por mercado |
+
+**Pendiente**: ejecutar `extract_browser.py --urls urls.json --market PR --split-aa` y comparar score vs 46/100.
+
+---
+
+## A debate
+
+Estos puntos requieren decision, no tienen fix tecnico:
+
+1. **6 URLs legal/privacy sin AA en preview** - Es esperado? Debemos ignorarlas o desactivar la alerta?
+2. **2 URLs ford.mx** - No estan en `urls.json` actual. Usan GA4? Agregarlas con `"market": "MX"`?
+3. **Score general vs por mercado** - Medimos score global o por mercado? El score mezcla markets con comportamientos muy distintos.
+4. **Linea de aceptacion** - Que score consideramos "suficiente"? 70? 80? Definir target por mercado.
