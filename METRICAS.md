@@ -11,6 +11,7 @@
 |-------|------|-------|-----|-----|-----------|-------|-------|
 | 2026-06-12 | master | — | — | — | — | 72 ✅ | Baseline post-roadmap |
 | 2026-06-12 | master | — | — | — | — | **93 ✅** | +21 integration tests (Excel pipeline, config, write_result, classify) |
+| 2026-06-12 | master | — | — | — | — | **93 ✅** | --market, --split-aa, apply_data_fills, --wait-after |
 
 ## Cobertura de Pilares (Framework v2.0)
 
@@ -30,11 +31,12 @@
 
 | Métrica | Valor |
 |---------|-------|
-| Líneas `extract_browser.py` | 1165 |
+| Líneas `extract_browser.py` | 1243 |
 | Líneas `extract_aa.py` | 207 |
 | Líneas `test_parse.py` | 711 |
-| Funciones (extract_browser) | 21 |
+| Funciones (extract_browser) | 23 |
 | Tests unitarios | 72 |
+| Tests integración | 21 |
 | Clases de test | 9 |
 | CI workflows | 3 (test, lint, audit) |
 | Versiones Python en CI | 3.9 → 3.13 |
@@ -49,6 +51,9 @@
 | `--diagnostic` | extract_browser | Verificar entorno sin navegar |
 | `--backup` | extract_browser | Backup pre-escritura |
 | `--config` | extract_browser | Auto-carga desde audit.json |
+| `--market` | extract_browser | Filtrar por market (PR, MX…). Output en carpeta |
+| `--split-aa` | extract_browser | Crear con_aa.xlsx + sin_aa.xlsx |
+| `--wait-after` | extract_browser | Espera post-carga configurable (default: 4s) |
 | `--score` | extract_aa | Métricas detalladas por fila |
 | `--keep` | extract_aa | Filtrar campos AA extraídos |
 
@@ -68,6 +73,7 @@
 |-------|--------|-------------|---------|
 | 2026-06-12 | --verbose, extract_aa logging, score fix, 41 tests nuevos | +0 → 72 ✅ | Calidad código + observabilidad |
 | 2026-06-12 | 21 integration tests (Excel pipeline, config, write_result) | 72 → **93 ✅** | Cobertura pipeline completo |
+| 2026-06-12 | --market, --split-aa, apply_data_fills, --wait-after | 93 ✅ | Segmentación por mercado + colores en datos |
 
 ---
 
