@@ -65,6 +65,7 @@ VALID_URL_SCHEMES = ("http", "https")
 ALLOWED_HOSTNAME_SUFFIXES = (
     ".ford.com",
     ".brandpr.ford.com",
+    ".ford.mx",
     ".omtrdc.net",
     ".adobedc.net",
     "2o7.net",
