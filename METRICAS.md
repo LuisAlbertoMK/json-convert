@@ -12,6 +12,7 @@
 | 2026-06-12 | master | — | — | — | — | 72 ✅ | Baseline post-roadmap |
 | 2026-06-12 | master | — | — | — | — | **93 ✅** | +21 integration tests (Excel pipeline, config, write_result, classify) |
 | 2026-06-12 | master | — | — | — | — | **93 ✅** | --market, --split-aa, apply_data_fills, --wait-after |
+| 2026-06-14 | master | — | — | — | — | **117 ✅** | Bugfix retry beacon, tests _gen_urls + extract_aa, cleanup imports, --diff con --urls |
 
 ## Cobertura de Pilares (Framework v2.0)
 
@@ -19,25 +20,26 @@
 |---|-------|--------|---|-------|
 | 1 | Seguridad | 🟡 Parcial | 60% | URL validation, PII redaction. Sin auth (CLI tool) |
 | 2 | Rendimiento | 🟢 OK | 80% | Async I/O, workers concurrentes |
-| 3 | Optimización & Eficiencia | 🟢 OK | 80% | CI/CD (test+lint+audit), incremental saves |
+| 3 | Optimización & Eficiencia | 🟢 OK | 85% | CI/CD (test+lint+audit), copy_worksheet más rápido, --diff multi-sheet |
 | 4 | Negocio / UX | 🟡 Parcial | 50% | Score por corrida, --diagnostic. Sin KPIs formales |
-| 5 | Fiabilidad & Resiliencia | 🟢 OK | 70% | Graceful shutdown, retry + backoff, error codes |
+| 5 | Fiabilidad & Resiliencia | 🟢 OK | 75% | Graceful shutdown, retry + backoff, error codes, beacon_urls reset en retry |
 | 6 | Observabilidad | 🟡 Parcial | 50% | Logging estructurado, --verbose. Sin tracing |
 | 7 | Privacidad & Compliance | 🟢 OK | 60% | PII redaction en logs. Aplica a CLI tool |
-| 8 | Testing Strategy | 🟢 OK | 80% | 72 tests (unit), 9 clases. Sin E2E ni integración |
+| 8 | Testing Strategy | 🟢 OK | 85% | 117 tests (72 unit + 45 integración), 13 clases. _gen_urls + extract_aa pipeline cubiertos |
 | 9 | AI/Agent Layer | 🔴 N/A | — | CLI tool interno, sin API pública |
 
 ## Estadísticas de Código
 
 | Métrica | Valor |
 |---------|-------|
-| Líneas `extract_browser.py` | 1243 |
+| Líneas `extract_browser.py` | 1233 |
 | Líneas `extract_aa.py` | 207 |
 | Líneas `test_parse.py` | 711 |
+| Líneas `test_gen_urls.py` | 121 |
+| Líneas `test_extract_aa.py` | 265 |
 | Funciones (extract_browser) | 23 |
-| Tests unitarios | 72 |
-| Tests integración | 21 |
-| Clases de test | 9 |
+| Tests totales | 117 (72 unit + 21 integración + 9 gen_urls + 15 extract_aa) |
+| Clases de test | 13 |
 | CI workflows | 3 (test, lint, audit) |
 | Versiones Python en CI | 3.9 → 3.13 |
 
@@ -75,6 +77,12 @@
 | 2026-06-12 | --verbose, extract_aa logging, score fix, 41 tests nuevos | +0 → 72 ✅ | Calidad código + observabilidad |
 | 2026-06-12 | 21 integration tests (Excel pipeline, config, write_result) | 72 → **93 ✅** | Cobertura pipeline completo |
 | 2026-06-12 | --market, --split-aa, apply_data_fills, --wait-after | 93 ✅ | Segmentación por mercado + colores en datos |
+| 2026-06-14 | Bugfix retry beacon reset | 93 → 117 ✅ | beacon_urls.clear() en retry evita contaminación entre intentos |
+| 2026-06-14 | test_gen_urls.py (9 tests) | 117 ✅ | Cobertura completa de _gen_urls.py |
+| 2026-06-14 | test_extract_aa.py (15 tests) | 117 ✅ | Pipeline completo extract_aa: Excel I/O, parseo, errores, save |
+| 2026-06-14 | Cleanup imports redundantes | 117 ✅ | remove inline subprocess/shutil/PF import |
+| 2026-06-14 | copy_worksheet vía shutil | 117 ✅ | Reemplaza copia celda por celda con shutil.copy2 + load |
+| 2026-06-14 | --diff con --urls | 117 ✅ | --diff funciona también en multi-sheet mode |
 
 ---
 
