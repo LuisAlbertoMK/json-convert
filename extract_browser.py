@@ -889,7 +889,6 @@ async def amain():
             print("  Playwright:       ❌ No instalado (pip install playwright)")
             ok = False
         try:
-            import openpyxl
             print(f"  openpyxl:         {openpyxl.__version__}")
         except ImportError:
             print("  openpyxl:         ❌ No instalado (pip install openpyxl)")

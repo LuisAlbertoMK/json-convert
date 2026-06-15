@@ -56,15 +56,17 @@ class TestGenUrlsExtract(unittest.TestCase):
         self.assertEqual(entries[1], {"url": "https://www.ford.com/about", "nombre": "About"})
 
     def test_extract_without_nombre(self):
-        """Celda A vacía → solo url en entry."""
+        """Celda A vacía → genera nombre desde la URL si es posible."""
         self._make_excel([
             (None, "https://www.ford.com"),
             ("", "https://www.ford.com/about"),
         ])
         entries = extract(self.xlsx_path)
         self.assertEqual(len(entries), 2)
+        # Sin path → no se puede generar nombre
         self.assertEqual(entries[0], {"url": "https://www.ford.com"})
-        self.assertEqual(entries[1], {"url": "https://www.ford.com/about"})
+        # Con path /about → genera "About"
+        self.assertEqual(entries[1], {"url": "https://www.ford.com/about", "nombre": "About"})
 
     def test_extract_skip_empty_urls(self):
         """Filas sin URL en col B se omiten."""
