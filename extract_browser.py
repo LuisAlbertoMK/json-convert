@@ -470,14 +470,15 @@ async def write_result(
             _write_cell(ws, row, 4, _pretty_json(dd_val))
             metrics["ok_dd"] += 1
         else:
-            ws.cell(row, 4).value = "(no digitaldata)"
+            _write_cell(ws, row, 4, _pretty_json({"error": "no digitaldata", "code": "DD_MISSING"}))
 
         # AA → col E (amarillo: media importancia, sin fill)
         if result.get("aa_parsed"):
             _write_cell(ws, row, 5, _pretty_json(result["aa_parsed"]))
             metrics["ok_aa"] += 1
         else:
-            ws.cell(row, 5).value = f"({result.get('error', 'no AA')})"
+            err_code = _error_code_from_detail(result.get('error', 'no AA'))
+            _write_cell(ws, row, 5, _pretty_json({"error": result.get('error', 'no AA'), "code": err_code}))
 
         # Score por URL (0-100)
         url_score = compute_url_score(result)
@@ -663,30 +664,48 @@ DATA_FILLS = {
 # D/E/G: sin fill en datos
 
 
+def _is_json_error(val: str) -> bool:
+    """Check if a JSON string contains an error object."""
+    try:
+        parsed = json.loads(val)
+        return isinstance(parsed, dict) and "error" in parsed and "code" in parsed
+    except (json.JSONDecodeError, TypeError):
+        return False
+
+
+def _has_json_data(val: str) -> bool:
+    """Check if a JSON string contains real data (not an error)."""
+    try:
+        parsed = json.loads(val)
+        return isinstance(parsed, dict) and "error" not in parsed
+    except (json.JSONDecodeError, TypeError):
+        return False
+
+
 def apply_data_fills(ws):
-    """Aplica colores de fondo a celdas de datos según su contenido."""
+    """Aplica colores de fondo a celdas de datos según su contenido (JSON-aware)."""
     RED = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
     YELLOW = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
 
     for row in range(2, ws.max_row + 1):
-        # Col C — DD manual (verde si tiene datos)
+        # Col C — DD manual (verde si tiene datos reales)
         c = ws.cell(row, 3).value
-        if c and not str(c).startswith("(no"):
+        if c and isinstance(c, str) and _has_json_data(c):
             ws.cell(row, 3).fill = DATA_FILLS["C"]
 
-        # Col D — DD automático (rojo si falló)
+        # Col D — DD automático (rojo si es error)
         d = ws.cell(row, 4).value
-        if d and str(d).strip() == "(no digitaldata)":
+        if d and isinstance(d, str) and _is_json_error(d):
             ws.cell(row, 4).fill = RED
 
-        # Col E — AA auto (amarillo si tiene datos)
+        # Col E — AA auto (amarillo si tiene datos reales)
         e = ws.cell(row, 5).value
-        if e and not str(e).startswith("("):
+        if e and isinstance(e, str) and _has_json_data(e):
             ws.cell(row, 5).fill = YELLOW
 
-        # Col F — AA estructurado (verde si tiene datos)
+        # Col F — AA estructurado (verde si tiene datos reales)
         f = ws.cell(row, 6).value
-        if f:
+        if f and isinstance(f, str) and _has_json_data(f):
             ws.cell(row, 6).fill = DATA_FILLS["F"]
 
 
@@ -699,7 +718,15 @@ def split_aa_workbooks(wb, audit_date: str, output_dir: str):
     con_rows, sin_rows = [], []
     for row in range(2, ws.max_row + 1):
         aa = ws.cell(row, 5).value
-        if aa and not str(aa).startswith("("):
+        # Real AA data = JSON with "solution" key, no "error" key
+        has_aa = False
+        if aa and isinstance(aa, str):
+            try:
+                parsed = json.loads(aa)
+                has_aa = isinstance(parsed, dict) and "solution" in parsed and "error" not in parsed
+            except (json.JSONDecodeError, TypeError):
+                has_aa = False
+        if has_aa:
             con_rows.append(row)
         else:
             sin_rows.append(row)
@@ -1118,8 +1145,8 @@ async def amain():
                 logging.error("Fila %d: URL inválida (%s): %s", row, err, sanitize_url_for_log(url))
                 metrics["errors"] += 1
                 metrics["errores_detalle"].append({"row": row, "error": err})
-                ws.cell(row, 5).value = f"(URL inválida: {err})"
-                ws.cell(row, 7).value = _pretty_json({"error": err, "url": url[:80], "code": "URL_INVALID"})
+                _write_cell(ws, row, 5, _pretty_json({"error": f"URL inválida: {err}", "code": "URL_INVALID"}))
+                _write_cell(ws, row, 7, _pretty_json({"error": err, "url": url[:80], "code": "URL_INVALID"}))
             else:
                 valid_rows.append((row, url))
 
