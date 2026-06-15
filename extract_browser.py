@@ -388,6 +388,9 @@ async def process_url(
     t0 = time.time()
 
     for attempt in range(1 + max_retry):
+        # Limpiar beacons de intentos fallidos previos
+        if attempt > 0:
+            beacon_urls.clear()
         try:
             resp = await page.goto(url, wait_until="load", timeout=timeout_ms)
             await asyncio.sleep(wait_after)
@@ -662,9 +665,8 @@ DATA_FILLS = {
 
 def apply_data_fills(ws):
     """Aplica colores de fondo a celdas de datos según su contenido."""
-    from openpyxl.styles import PatternFill as PF
-    RED = PF(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-    YELLOW = PF(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+    RED = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    YELLOW = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
 
     for row in range(2, ws.max_row + 1):
         # Col C — DD manual (verde si tiene datos)
@@ -893,7 +895,6 @@ async def amain():
             print("  openpyxl:         ❌ No instalado (pip install openpyxl)")
             ok = False
         # Chromium
-        import subprocess, shutil
         chromium_path = shutil.which("chromium") or os.environ.get("PLAYWRIGHT_CHROMIUM_PATH")
         if chromium_path:
             print(f"  Chromium:         {chromium_path}")
@@ -931,13 +932,20 @@ async def amain():
         return 0 if ok else 1
 
     # ── --diff: comparar ultimas 2 auditorias (sin procesar) ──
-    if args.diff and not args.urls:
-        diff_path = args.output or "historial.xlsx"
+    if args.diff:
+        if args.urls:
+            # Con --urls: buscar en el archivo multi-sheet correspondiente
+            if args.market:
+                diff_path = args.output or f"{args.market.upper()}/historial.xlsx"
+            else:
+                diff_path = args.output or "historial.xlsx"
+        else:
+            diff_path = args.output or "historial.xlsx"
         if not os.path.exists(diff_path):
             logging.error("No existe %s para comparar", diff_path)
             return 1
         wb = openpyxl.load_workbook(diff_path)
-        sheets = [s for s in wb.sheetnames if s != "_control"]
+        sheets = [s for s in wb.sheetnames if s != "_control" and s != "_vars"]
         sheets.sort(key=lambda s: s if "-" in s else "0", reverse=True)  # YYYY-MM-DD sort
         if len(sheets) < 2:
             logging.info("Se necesitan al menos 2 auditorias para --diff")
@@ -999,25 +1007,13 @@ async def amain():
         ws = wb.active
 
     if args.output and not args.urls and not audit_date:
-        # Copiamos output sin mutar input (solo modo clasico)
-        wb_copy = openpyxl.Workbook()
-        wb_copy.remove(wb_copy.active)
-        for sheet_name in wb.sheetnames:
-            src = wb[sheet_name]
-            dst = wb_copy.create_sheet(title=sheet_name)
-            for row in src.iter_rows():
-                for cell in row:
-                    dst_cell = dst.cell(row=cell.row, column=cell.column)
-                    dst_cell.value = cell.value
-                    if cell.has_style:
-                        dst_cell.font = copy(cell.font)
-                        dst_cell.alignment = copy(cell.alignment)
-                        dst_cell.border = copy(cell.border)
-                        dst_cell.fill = copy(cell.fill)
-                        dst_cell.number_format = copy(cell.number_format)
-                        dst_cell.protection = copy(cell.protection)
-        ws = wb_copy.active
-        wb = wb_copy
+        # Copia física del input al output, luego trabajamos sobre output.
+        # Si el script crashea durante procesamiento, el output queda con los
+        # datos originales (no corrupto), y el input jamás se modifica.
+        import shutil
+        shutil.copy2(args.input, args.output)
+        wb = openpyxl.load_workbook(args.output)
+        ws = wb.active
 
     errs = validate_sheet(ws)
     if errs:
