@@ -235,9 +235,6 @@ def choose_market(source="detect"):
     if not items:
         return None, None
 
-    if len(items) == 1:
-        return items[0]  # único mercado → sin preguntar
-
     print(_c("cyan", "\n  Mercados disponibles:"))
     print("    " + _c("bold", "0") + ". Todos los mercados")
     for i, item in enumerate(items, 1):
@@ -709,12 +706,12 @@ def show_menu():
     return ask_int("  Opcion [0-8]: ", 0, 8)
 
 
-def run_option(opt):
+def run_option(opt, non_interactive=False):
     """Ejecuta la opcion. Retorna False si hay que salir."""
     start = time.time()
 
     if opt == 1:
-        op_todo_en_uno()
+        op_todo_en_uno(target_market=ALL_MARKETS if non_interactive else None)
     elif opt == 2:
         op_auditar()
     elif opt == 3:
@@ -748,7 +745,7 @@ def run_option(opt):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Panel de control json-convert")
     parser.add_argument("--run", type=str,
-                        help="Ejecutar opcion directa: numero 1-6, 0, o 'auto'")
+                        help="Ejecutar opcion directa: numero 1-8, 0, o 'auto'")
     args = parser.parse_args()
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -774,14 +771,14 @@ if __name__ == "__main__":
         opt = opt_map.get(args.run, -1)
         if opt < 0:
             print(_c("red", "[ERROR] Opcion invalida: " + args.run))
-            print("  Valores validos: 1-6, 0, 'auto'")
+            print("  Valores validos: 1-8, 0, 'auto'")
             sys.exit(1)
 
-        # Modo no-interactivo: auto-confirm
+        # Modo no-interactivo: auto-confirm sin preguntar mercado
         _old_input = input
         input = lambda prompt="": "y"
 
-        run_option(opt)
+        run_option(opt, non_interactive=True)
         sys.exit(0)
 
     # Modo interactivo
