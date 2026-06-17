@@ -221,12 +221,24 @@ async def process_url(
             navigation_error = "Timeout al navegar"
             logging.debug("Timeout en intento %d: %s", attempt + 1, url)
             if attempt < max_retry:
-                await page.wait_for_timeout(2000)
+                # ⚠ page puede estar cerrada si el browser perdió conexión
+                try:
+                    await page.wait_for_timeout(2000)
+                except Exception:
+                    break
+        except asyncio.CancelledError:
+            navigation_error = "Tarea cancelada"
+            logging.debug("Cancelled en intento %d: %s", attempt + 1, url)
+            raise  # No reintentar — propagar cancelación
         except Exception as e:
             navigation_error = f"Error al navegar: {e}"
             logging.debug("Error en intento %d: %s", attempt + 1, e)
             if attempt < max_retry:
-                await page.wait_for_timeout(2000)
+                # ⚠ page puede estar cerrada si el browser perdió conexión
+                try:
+                    await page.wait_for_timeout(2000)
+                except Exception:
+                    break
 
     # Parsear beacons
     extra_count = 0
@@ -475,16 +487,25 @@ async def _run_pipeline(context, urls, args, ws, output_path):
     async def _worker(row, url):
         if _shutdown_flag:
             return
-        result = await _process_one(row, url)
+        try:
+            result = await _process_one(row, url)
+        except Exception as e:
+            # Si process_url no pudo manejar el error, registrar como fallo
+            logging.error("[%s] Fallo grave: %s", url[:60], e)
+            result = {"url": url, "row": row, "error": str(e), "aa_parsed": None, "digitaldata": None}
+            metrics["errors"] += 1
         results.append(result)
 
         # Escribir en Excel + actualizar métricas via pipeline write_result
-        await write_result(
-            ws, result, metrics, excel_lock, output_path, saved_count,
-            show_progress=bool(args.progress),
-            total_urls=metrics["total"],
-            workers=args.workers or 3,
-        )
+        try:
+            await write_result(
+                ws, result, metrics, excel_lock, output_path, saved_count,
+                show_progress=bool(args.progress),
+                total_urls=metrics["total"],
+                workers=args.workers or 3,
+            )
+        except Exception as e:
+            logging.error("[%s] Error escribiendo resultado: %s", url[:60], e)
 
         if result.get("error"):
             errors_detail.append({"row": row, "error": result["error"]})
@@ -494,7 +515,7 @@ async def _run_pipeline(context, urls, args, ws, output_path):
             logging.info("[%d/%d] %s %s", len(results), metrics["total"], status, url[:80])
 
     tasks = [_worker(row, url) for row, url in urls]
-    await asyncio.gather(*tasks)
+    await asyncio.gather(*tasks, return_exceptions=True)
 
     metrics["total_time"] = sum(metrics["times"])
     metrics["errores_detalle"] = errors_detail
