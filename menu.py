@@ -10,6 +10,9 @@ Sin dependencias externas - solo stdlib.
 """
 
 import argparse
+
+# Force UTF-8 stdout for ANSI codes to work on Windows
+import io
 import json
 import os
 import subprocess
@@ -18,8 +21,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-# Force UTF-8 stdout for ANSI codes to work on Windows
-import io
 if sys.stdout.encoding and sys.stdout.encoding.upper() != "UTF-8":
     try:
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
@@ -519,7 +520,7 @@ def op_todo_en_uno(target_market=None):
     c_print("bold", "  [!] PIPELINE COMPLETO")
     separator("=", 55)
     print()
-    print("  Inicio: " + datetime.now().strftime('%H:%M:%S'))
+    print("  Inicio: " + datetime.now().strftime("%H:%M:%S"))
     print()
 
     # Elegir mercado si no se especificó
@@ -690,7 +691,7 @@ def _pipeline_summary(results: list) -> None:
             ok_count += 1
     separator("-", 55)
     print("  " + str(ok_count) + "/" + str(len(results)) + " pasos completados")
-    print("  Fin: " + datetime.now().strftime('%H:%M:%S'))
+    print("  Fin: " + datetime.now().strftime("%H:%M:%S"))
     if ok_count == len(results):
         print(_c("green", "  Pipeline completado exitosamente."))
     else:

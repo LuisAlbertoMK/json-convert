@@ -24,16 +24,15 @@ Flujo completo:
     → generate_migration_catalog.py → {market}/catalogo-migracion.xlsx
 """
 
-import json
 import argparse
+import json
 import os
-import sys
 import re
+import sys
 from datetime import date
 
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 # ── Constantes ──
 PARAMS_ORDER = ["pageName", "siteSection", "pageNameNoVehicle",
@@ -84,7 +83,7 @@ EMOJI = {"ok": "✅", "warn": "⚠️", "create": "❌", "remove": "🗑️"}
 # ════════════════════════════════════════════
 
 def load_json(path: str) -> dict:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -256,7 +255,7 @@ def compare_page(actual_page: dict, expected_page: dict, cfg: dict,
                 if not actual_str.startswith(prefix):
                     action_text = f"Agregar prefijo '{prefix}'"
                 else:
-                    action_text = f"Alinear nomenclatura"
+                    action_text = "Alinear nomenclatura"
             elif param == "siteSection":
                 action_text = f"Sección legacy → '{expected_str}'"
             elif param == "site":
@@ -468,7 +467,7 @@ def generate_template(historial_path: str, output: str):
             continue
 
         name_str = str(nombre).strip() if nombre else ""
-        suggested_key = re.sub(r'[^a-z0-9]+', '-', name_str.lower()).strip('-')
+        suggested_key = re.sub(r"[^a-z0-9]+", "-", name_str.lower()).strip("-")
         if not suggested_key:
             suggested_key = "page"
 
@@ -523,7 +522,7 @@ def main():
                          (args.expected, "expected")]:
         if not os.path.exists(fpath):
             print(f"[ERR] Archivo {fname} no encontrado: {fpath}")
-            print(f"  Usar --gen-template para crear el mapping")
+            print("  Usar --gen-template para crear el mapping")
             sys.exit(1)
 
     # Output default: {market}/catalogo-migracion.xlsx

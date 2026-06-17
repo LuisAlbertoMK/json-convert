@@ -14,20 +14,23 @@ No requiere: playwright, openpyxl, red, navegador.
 """
 
 import json
-import unittest
-import sys
 import os
+import sys
+import unittest
 
 # Importar funciones del script principal
 sys.path.insert(0, os.path.dirname(__file__))
-from extract_browser import (
-    parse_aa_beacon, build_aa_from_s,
-    validate_url, sanitize_url_for_log,
-    _error_code_from_detail, classify_errors,
-    compute_score, compute_url_score,
-)
 from extract_aa import extract_fields
-
+from extract_browser import (
+    _error_code_from_detail,
+    build_aa_from_s,
+    classify_errors,
+    compute_score,
+    compute_url_score,
+    parse_aa_beacon,
+    sanitize_url_for_log,
+    validate_url,
+)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # BEACONS DE EJEMPLO (formato real de Adobe Analytics)

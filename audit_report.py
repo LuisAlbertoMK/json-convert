@@ -36,7 +36,7 @@ if sys.stdout.encoding and sys.stdout.encoding.upper() not in ("UTF-8", "CP65001
 
 try:
     import openpyxl
-    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 except ImportError:
     print("[ERROR] openpyxl no está instalado. Ejecutá: pip install openpyxl")
     sys.exit(1)
@@ -459,7 +459,7 @@ Ejemplos:
     print(f"{'='*55}")
 
     if fail_count > 0:
-        print(f"\n  PÁGINAS CON FALLOS:")
+        print("\n  PÁGINAS CON FALLOS:")
         for p in failed:
             print(f"    [{p['mercado']}] {p['nombre']}")
             print(f"           {p['url']}")
@@ -467,7 +467,7 @@ Ejemplos:
             print()
 
     if nodata_count > 0:
-        print(f"\n  PÁGINAS SIN DATOS (pueden ser páginas sin AA implementado):")
+        print("\n  PÁGINAS SIN DATOS (pueden ser páginas sin AA implementado):")
         for p in all_sorted:
             if p["estado"] == "SIN_DATOS":
                 print(f"    [{p['mercado']}] {p['nombre']}")

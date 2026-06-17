@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "json-convert"
+version = "2.0.0"
+description = "Browser automation tool to extract Adobe Analytics data from Ford preview websites into Excel"
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.40,<2.0",
+    "openpyxl>=3.0,<4.0",
+]
+
+[tool.ruff]
+# Format
+line-length = 100
+indent-width = 4
+target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "double"
+skip-magic-trailing-comma = false
+docstring-code-format = true
+
+[tool.ruff.lint]
+# Reglas pragmáticas: las que más impacto tienen
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming (selective)
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+    "Q000", # bad quotes
+    "T20",  # flake8-print (print statements)
+    "PTH",  # pathlib (selective)
+    "TRY",  # tryceratops (error handling patterns)
+    "LOG",  # flake8-logging
+]
+ignore = [
+    "E501",     # line-too-long (lo manejamos con formatter)
+    "N802",     # lower-case function names (muchas funciones legacy)
+    "N803",     # argument name (mismos nombres legacy)
+    "N806",     # variable in function (mismos nombres legacy)
+    "N811",     # constant imported as non-constant
+    "N812",     # lowercase imported as non-lowercase
+    "N813",     # camelcase imported as lowercase
+    "N814",     # camelcase imported as constant
+    "PTH113",   # os-path-getctime (no tenemos pathlib alternativo consistente)
+    "PTH104",   # os-path-relpath
+    "PTH105",   # os-path-isabs
+    "PTH109",   # os-path-islink
+    "PTH111",   # os-path-expanduser
+    "PTH114",   # os-path-getmtime
+    "PTH115",   # os-path-getatime
+    "PTH116",   # os-path-samefile
+    "PTH117",   # os-path-sameopenfile
+    "PTH121",   # os-path-walk
+    "LOG009",   # log statement with f-string
+    "T201",     # print (por ahora)
+]
+unfixable = [
+    "ERA001",   # commented-out-code (no queremos borrar comentarios)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test_*" = [
+    "S101",     # assert
+    "T201",     # print
+    "PLR2004",  # magic-value-comparison
+    "ARG001",   # unused-function-argument
+    "B007",     # unused-loop-control-variable
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "test_*"
+allow_untyped_defs = true
+allow_untyped_calls = true

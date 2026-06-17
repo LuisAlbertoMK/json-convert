@@ -35,16 +35,16 @@ Requiere:
 
 import asyncio
 import json
+import logging
 import os
 import re
-import sys
-import time
 import signal
 import subprocess
-import logging
+import sys
+import time
 from copy import copy
 from datetime import datetime, timedelta
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 # ── Graceful shutdown ──
 _shutdown_flag = False
@@ -123,7 +123,8 @@ def sanitize_url_for_log(url: str, max_len: int = 80) -> str:
 import openpyxl
 from openpyxl.styles import Alignment, PatternFill
 from openpyxl.utils import get_column_letter
-from playwright.async_api import async_playwright, TimeoutError as PwTimeout
+from playwright.async_api import TimeoutError as PwTimeout
+from playwright.async_api import async_playwright
 
 INPUT_FILE = "RevisionManual.xlsx"
 
@@ -445,7 +446,7 @@ async def process_url(
             result["status"] = -2
             result["error"] = str(e)[:120]
             result["code"] = _error_code_from_detail(str(e))
-            logging.error("Error navegando fila %d: %s", row, e)
+            logging.exception("Error navegando fila %d: %s", row, e)
 
         if attempt < max_retry and result["status"] in (-1, -2):
             wait = 5 * (attempt + 1)
@@ -511,8 +512,8 @@ async def write_result(
             _write_cell(ws, row, 4, _pretty_json(result["aa_parsed"]))
             metrics["ok_aa"] += 1
         else:
-            err_code = _error_code_from_detail(result.get('error', 'no AA'))
-            _write_cell(ws, row, 4, _pretty_json({"error": result.get('error', 'no AA'), "code": err_code}))
+            err_code = _error_code_from_detail(result.get("error", "no AA"))
+            _write_cell(ws, row, 4, _pretty_json({"error": result.get("error", "no AA"), "code": err_code}))
 
         # Score por URL (0-100)
         url_score = compute_url_score(result)
@@ -1102,7 +1103,7 @@ async def amain():
         return
 
     logging.info("URLs a procesar: %d | Workers: %d | Backup: %s",
-                 len(rows_to_process), args.workers, getattr(args, 'backup', False))
+                 len(rows_to_process), args.workers, getattr(args, "backup", False))
 
     metrics = {"total": len(rows_to_process), "ok_aa": 0, "ok_dd": 0,
                "errors": 0, "retries": 0, "total_beacons": 0, "times": [],
@@ -1137,7 +1138,7 @@ async def amain():
                     timeout_ms=args.timeout,
                     max_retry=args.retry,
                 )
-                status_str = f"HTTP {result['status']}" if result['status'] > 0 else f"ERR {result['status']}"
+                status_str = f"HTTP {result['status']}" if result["status"] > 0 else f"ERR {result['status']}"
                 log_url = sanitize_url_for_log(url)
                 logging.info("Fila %d | %s | AA: %s | %.1fs | %s",
                              row, status_str,

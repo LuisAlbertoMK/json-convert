@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import sys
+
 import openpyxl
 from openpyxl.styles import Alignment, PatternFill
 
@@ -141,7 +142,7 @@ def main():
         unknown = [k for k in keep if k not in ALL_FIELDS and k != "all"]
         if unknown:
             logging.error("Campos desconocidos: %s. Opciones validas: %s o 'all'",
-                          unknown, ','.join(ALL_FIELDS))
+                          unknown, ",".join(ALL_FIELDS))
             sys.exit(1)
 
     wb = openpyxl.load_workbook(args.input)
@@ -223,7 +224,7 @@ def main():
 
     if args.score and stats_rows:
         print(f"\n{'='*55}", file=sys.stderr)
-        print(f"  MÉTRICAS POR FILA (--score)", file=sys.stderr)
+        print("  MÉTRICAS POR FILA (--score)", file=sys.stderr)
         print(f"{'='*55}", file=sys.stderr)
         for s in stats_rows:
             print(f"  Fila {s['row']}: campos={s['fields']}", file=sys.stderr)

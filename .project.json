@@ -1,0 +1,15 @@
+{
+  "score": {
+    "current": 5,
+    "dimensions": {
+      "correctness": 5,
+      "tokens": 5,
+      "errorPrevention": 5,
+      "skill": 5,
+      "speed": 5,
+      "breadth": 5
+    },
+    "lastUpdated": "2026-06-17T20:07:22.407Z",
+    "trend": "stable"
+  }
+}

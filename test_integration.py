@@ -17,16 +17,22 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 # Importar funciones del script principal
 sys.path.insert(0, os.path.dirname(__file__))
 from extract_browser import (
-    setup_multisheet, update_control, validate_sheet,
-    save_workbook, validate_url, SHEET_HEADERS, CONTROL_HEADERS,
-    _error_code_from_detail, classify_errors, compute_score,
+    CONTROL_HEADERS,
+    SHEET_HEADERS,
+    _error_code_from_detail,
+    classify_errors,
+    compute_score,
+    save_workbook,
+    setup_multisheet,
+    update_control,
+    validate_sheet,
+    validate_url,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # HELPERS
@@ -230,7 +236,7 @@ class TestMultisheetPipeline(unittest.TestCase):
             # segundo intento (fallback) → ejecuta real
             real_save(path)
 
-        with patch.object(wb, 'save', side_effect=mock_save):
+        with patch.object(wb, "save", side_effect=mock_save):
             result = save_workbook(wb, self.output_path)
         self.assertNotEqual(result, self.output_path)
         self.assertTrue(result.endswith("_browser.xlsx"))
@@ -280,7 +286,7 @@ class TestConfigLoading(unittest.TestCase):
         # Asignar defaults como argparse: None o False
         for k in cfg:
             if not hasattr(args, k):
-                setattr(args, k, None if k not in ('headed', 'discard_cookies', 'progress', 'verbose') else False)
+                setattr(args, k, None if k not in ("headed", "discard_cookies", "progress", "verbose") else False)
 
         # Aplicar config: solo sobreescribe valores falsy/None
         for k, v in cfg.items():

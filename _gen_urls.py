@@ -6,8 +6,12 @@ Uso:
   python _gen_urls.py --output mis_urls.json                  # nombre custom de salida
   python _gen_urls.py --default-market MX                     # override manual si no se detecta
 """
-import openpyxl, json, argparse, re
+import argparse
+import json
+import re
 from urllib.parse import urlparse
+
+import openpyxl
 
 DEFAULT_INPUT = "RevisionManual.xlsx"
 DEFAULT_OUTPUT = "urls.json"
@@ -88,7 +92,7 @@ def main():
     if markets:
         print(f"  Mercados detectados: {', '.join(sorted(markets))}")
     else:
-        print(f"  (sin mercado detectado en las URLs)")
+        print("  (sin mercado detectado en las URLs)")
 
 if __name__ == "__main__":
     main()

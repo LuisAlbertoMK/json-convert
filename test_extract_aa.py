@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
-from extract_aa import extract_fields, _save_workbook, DEFAULT_KEEP, ALL_FIELDS
+from extract_aa import ALL_FIELDS, DEFAULT_KEEP, _save_workbook, extract_fields
 
 SAMPLE_AA_JSON = {
     "solution": "analytics",
@@ -251,7 +251,7 @@ class TestExtractAAPipeline(unittest.TestCase):
             real_save(p)
 
         from unittest.mock import patch
-        with patch.object(wb2, 'save', side_effect=mock_save):
+        with patch.object(wb2, "save", side_effect=mock_save):
             result = _save_workbook(wb2, path)
         self.assertNotEqual(result, path)
         self.assertTrue(result.endswith("_limpio.xlsx"))
