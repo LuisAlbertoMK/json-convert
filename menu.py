@@ -233,7 +233,13 @@ def choose_market(source="detect"):
         items = detect_markets()  # [(name, path), ...]
 
     if not items:
+        print(_c("yellow", "\n  [!] No hay mercados disponibles."))
         return None, None
+
+    if len(items) == 1:
+        name = items[0][0]
+        print(_c("dim", f"\n  Mercado único: {name} (seleccionado automáticamente)"))
+        return items[0]
 
     print(_c("cyan", "\n  Mercados disponibles:"))
     print("    " + _c("bold", "0") + ". Todos los mercados")
