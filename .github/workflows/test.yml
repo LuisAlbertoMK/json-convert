@@ -18,4 +18,4 @@ jobs:
       - name: Install dependencies
         run: pip install --user openpyxl playwright
       - name: Run tests
-        run: python test_parse.py
+        run: python -m pytest test_parse.py test_extract_aa.py test_gen_urls.py -q
