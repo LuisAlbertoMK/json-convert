@@ -377,6 +377,17 @@ def op_limpieza():
     print(_c("green", "\n  [OK] Limpieza finalizada."))
 
 
+def op_prune():
+    """Opcion 8: Limpiar columnas muertas de Excel."""
+    header("LIMPIAR COLUMNAS - prune_excel_columns.py")
+    code = run_step([sys.executable, "prune_excel_columns.py"],
+                    "Eliminando columnas inutiles...", timeout=30)
+    if code == 0:
+        print(_c("green", "\n  [OK] Columnas limpiadas."))
+    else:
+        print(_c("red", "\n  [ERROR] Fallo la limpieza."))
+
+
 def op_ver_resultados():
     """Opcion 6: Abrir Excel."""
     header("RESULTADOS")
@@ -425,7 +436,7 @@ def op_todo_en_uno():
     results = []
 
     # Paso 1: Verificar urls.json
-    print(_c("cyan", "  [1/6] Verificando entorno..."))
+    print(_c("cyan", "  [1/7] Verificando entorno..."))
     urls_path = os.path.join(BASE_DIR, "urls.json")
     has_urls = os.path.exists(urls_path)
     if not has_urls:
@@ -446,7 +457,7 @@ def op_todo_en_uno():
 
     # Paso 2: Auditoria (por mercado)
     print()
-    print(_c("cyan", "  [2/6] Auditoria (extract_browser)..."))
+    print(_c("cyan", "  [2/7] Auditoria (extract_browser)..."))
     if has_urls:
         url_markets = get_markets_from_urls()
         if url_markets:
@@ -473,7 +484,7 @@ def op_todo_en_uno():
 
     # Paso 3: Post-procesar
     print()
-    print(_c("cyan", "  [3/6] Post-procesando (extract_aa)..."))
+    print(_c("cyan", "  [3/7] Post-procesando (extract_aa)..."))
     markets = detect_markets()
     processed_any = False
     for m, hpath in markets:
@@ -492,16 +503,23 @@ def op_todo_en_uno():
         print(_c("yellow", "    No hay archivos de auditoria para post-procesar."))
         results.append(("Post-proceso", -1))
 
-    # Paso 4: Reporte de fallos (global + por mercado)
+    # Paso 4: Limpiar columnas muertas
     print()
-    print(_c("cyan", "  [4/6] Generando reporte de fallos..."))
+    print(_c("cyan", "  [4/7] Limpiando columnas inutiles..."))
+    rc = run_step([sys.executable, "prune_excel_columns.py"],
+                  "prune_excel_columns.py", timeout=30)
+    results.append(("Prune columnas", rc))
+
+    # Paso 5: Reporte de fallos (global + por mercado)
+    print()
+    print(_c("cyan", "  [5/7] Generando reporte de fallos..."))
     rc = run_step([sys.executable, "audit_report.py", "--per-market"],
                   "audit_report.py", timeout=60)
     results.append(("Reporte de fallos", rc))
 
-    # Paso 5: Catalogo de migracion
+    # Paso 6: Catalogo de migracion
     print()
-    print(_c("cyan", "  [5/6] Catalogo de migracion..."))
+    print(_c("cyan", "  [6/7] Catalogo de migracion..."))
     mapping_path = os.path.join(BASE_DIR, "url-mapping.json")
     if not os.path.exists(mapping_path):
         rp = os.path.join(BASE_DIR, "RevisionManual.xlsx")
@@ -534,7 +552,7 @@ def op_todo_en_uno():
 
     # Paso 6: Resultados
     print()
-    print(_c("cyan", "  [6/6] Resultados..."))
+    print(_c("cyan", "  [7/7] Resultados..."))
     report_path = os.path.join(BASE_DIR, "reporte_auditoria.xlsx")
     if os.path.exists(report_path):
         if confirm("  Abrir el reporte?", default=True):
@@ -602,12 +620,13 @@ def show_menu():
     print("  " + _c("bold", "5") + ") " + _c("yellow", "[C]") + "  Solo limpieza        run.ps1")
     print("  " + _c("bold", "6") + ") " + _c("blue", "[V]") + "  Ver resultados       abrir Excel")
     print("  " + _c("bold", "7") + ") " + _c("magenta", "[M]") + "  Catalogo migracion   generate_migration_catalog.py")
+    print("  " + _c("bold", "8") + ") " + _c("yellow", "[P]") + "  Limpiar columnas     prune_excel_columns.py")
     print()
     separator("-", 55)
     print("  " + _c("dim", "0") + ") " + _c("dim", "x  Salir"))
     separator("=", 55)
 
-    return ask_int("  Opcion [0-7]: ", 0, 7)
+    return ask_int("  Opcion [0-8]: ", 0, 8)
 
 
 def run_option(opt):
@@ -628,6 +647,8 @@ def run_option(opt):
         op_ver_resultados()
     elif opt == 7:
         op_catalogo()
+    elif opt == 8:
+        op_prune()
     elif opt == 0:
         print()
         c_print("green", "  Hasta luego!")
@@ -668,7 +689,7 @@ if __name__ == "__main__":
 
     # Modo directo --run
     if args.run:
-        opt_map = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
+        opt_map = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8,
                    "0": 0, "auto": 1}
         opt = opt_map.get(args.run, -1)
         if opt < 0:
