@@ -381,15 +381,17 @@ def _run_extract_aa_companions(hpath):
                      "Procesando: " + fp, timeout=600)
 
 
-def op_reporte():
+def op_reporte(non_interactive=False):
     """Opcion 4: Generar reporte de fallos."""
     header("REPORTE DE FALLOS - audit_report.py")
 
+    entorno = _choose_entorno(non_interactive)
     urls_path = os.path.join(BASE_DIR, "urls.json")
     urls_arg = ["--urls", urls_path] if os.path.exists(urls_path) else []
 
-    code = run_step([sys.executable, "audit_report.py"] + urls_arg,
-                    "Generando reporte (auto-bootstrap si es necesario)...", timeout=600)
+    code = run_step(
+        [sys.executable, "audit_report.py"] + urls_arg + ["--entorno", entorno],
+        f"Generando reporte (entorno: {entorno})...", timeout=600)
 
     if code == 0:
         print(_c("green", "\n  [OK] Reporte global generado: reporte_auditoria.xlsx"))
@@ -705,9 +707,10 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
 
         # Paso 6: Reporte de fallos (global + por mercado)
         print()
-        print(_c("cyan", "  [6/8] Generando reporte de fallos..."))
-        rc = run_step([sys.executable, "audit_report.py"],
-                      "audit_report.py", timeout=60)
+        print(_c("cyan", f"  [6/8] Generando reporte de fallos ({entorno})..."))
+        rc = run_step(
+            [sys.executable, "audit_report.py", "--urls", "urls.json", "--entorno", entorno],
+            "audit_report.py", timeout=60)
         results.append(("Reporte de fallos", rc))
 
         # Paso 7: Catalogo de migracion
@@ -839,7 +842,7 @@ def run_option(opt, non_interactive=False):
     elif opt == 3:
         op_postprocesar()
     elif opt == 4:
-        op_reporte()
+        op_reporte(non_interactive=non_interactive)
     elif opt == 5:
         op_limpieza()
     elif opt == 6:

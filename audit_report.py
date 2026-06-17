@@ -389,6 +389,9 @@ Ejemplos:
                         help="Directorio(s) de mercado (ej: PR, MX)")
     parser.add_argument("--input", help="Ruta directa a un historial.xlsx")
     parser.add_argument("--urls", help="urls.json para auto-generar datos si no hay historiales")
+    parser.add_argument("--entorno", default="ambas",
+                        choices=("preview", "produccion", "ambas"),
+                        help="Entorno para auto-bootstrap (default: ambas)")
     parser.add_argument("--output", default="reporte_auditoria.xlsx",
                         help="Archivo Excel de salida (default: reporte_auditoria.xlsx)")
     parser.add_argument("--verbose", action="store_true", help="Logging detallado")
@@ -421,37 +424,43 @@ Ejemplos:
                     break
 
         if urls_path and os.path.exists(urls_path):
-            # Estimar cantidad de URLs
+            # Estimar cantidad de URLs (según --entorno)
             _n_urls = 0
             try:
                 with open(urls_path) as _f:
                     _all_urls = json.load(_f)
-                _n_urls = len([e for e in _all_urls if e.get("entorno", "preview") == "preview"])
+                if args.entorno == "ambas":
+                    _n_urls = len(_all_urls)
+                else:
+                    _n_urls = len([e for e in _all_urls if e.get("entorno", "preview") == args.entorno])
             except Exception:
                 pass
-            urls_label = f" ({_n_urls} URLs)" if _n_urls else ""
+            urls_label = f" ({_n_urls} URLs [{args.entorno}])" if _n_urls else ""
             print(f"[.] No hay historiales. Generando{urls_label} desde {urls_path}...")
             script_dir = os.path.dirname(__file__)
 
-            # 1. extract_browser
+            # 1. extract_browser (con --entorno para filtrar URLs)
             browser_script = os.path.join(script_dir, "extract_browser.py")
-            r1 = subprocess.run(
-                [sys.executable, browser_script, "--urls", urls_path, "--split-aa"],
-                capture_output=True, text=True, timeout=600,
-            )
+            browser_cmd = [
+                sys.executable, browser_script, "--urls", urls_path,
+                "--split-aa", "--entorno", args.entorno,
+            ]
+            print(f"  Ejecutando: extract_browser (--entorno {args.entorno})...")
+            r1 = subprocess.run(browser_cmd, timeout=1800)
             if r1.returncode != 0:
-                print(f"[ERROR] extract_browser falló (exit {r1.returncode}): {r1.stderr[:200]}")
+                print(f"[ERROR] extract_browser falló (exit {r1.returncode})")
                 sys.exit(1)
             print("  → Auditoría completada.")
 
             # 2. extract_aa (post-procesar)
             aa_script = os.path.join(script_dir, "extract_aa.py")
+            print("  Post-procesando con extract_aa...")
             r2 = subprocess.run(
                 [sys.executable, aa_script, "--input", "historial.xlsx", "--urls", urls_path],
-                capture_output=True, text=True, timeout=120,
+                timeout=180,
             )
             if r2.returncode != 0:
-                print(f"[WARN] extract_aa falló (exit {r2.returncode}): {r2.stderr[:200]}")
+                print(f"[WARN] extract_aa falló (exit {r2.returncode})")
             else:
                 print("  → Post-proceso completado.")
 
