@@ -76,7 +76,7 @@ class TestMultisheetPipeline(unittest.TestCase):
         self.assertIn(audit_date, wb.sheetnames)
 
         # Verificar headers
-        headers = [ws.cell(1, c).value for c in range(1, 8)]
+        headers = [ws.cell(1, c).value for c in range(1, 7)]
         self.assertEqual(headers, SHEET_HEADERS)
 
         # setup_multisheet crea estructura + headers.
@@ -459,16 +459,16 @@ class TestWriteResultIntegration(unittest.TestCase):
         self.assertEqual(metrics["total_beacons"], 2)  # 1 principal + 1 extra
 
         # Verificar celdas
-        dd_val = self.ws.cell(2, 4).value  # col D = digitaldata
+        dd_val = self.ws.cell(2, 3).value  # col C = digitaldata
         self.assertIn("home", dd_val or "")
-        aa_val = self.ws.cell(2, 5).value  # col E = AA analytics
+        aa_val = self.ws.cell(2, 4).value  # col D = AA analytics
         self.assertIn("event1", aa_val or "")
-        meta_val = self.ws.cell(2, 7).value  # col G = metadata
+        meta_val = self.ws.cell(2, 6).value  # col F = metadata
         self.assertIn("score", meta_val or "")
         self.assertIn("beacon", meta_val or "")
 
     def test_write_error_result(self):
-        """Resultado con error → col E muestra error, se registra en metrics."""
+        """Resultado con error → col D muestra error, se registra en metrics."""
         result = {
             "row": 2, "url": "https://www.ford.com/home",
             "status": -1, "error": "timeout", "code": "TIMEOUT",
@@ -485,16 +485,17 @@ class TestWriteResultIntegration(unittest.TestCase):
         self.assertEqual(metrics["total_beacons"], 1)  # 1 default
         self.assertEqual(len(metrics["errores_detalle"]), 1)
 
-        # Verificar col E = mensaje de error entre paréntesis
-        aa_val = self.ws.cell(2, 5).value
-        self.assertIn("(timeout)", aa_val or "")
+        # Verificar col D = error en JSON
+        aa_val = self.ws.cell(2, 4).value
+        self.assertIn("timeout", aa_val or "")
+        self.assertIn("TIMEOUT", aa_val or "")
 
-        # Verificar col D = (no digitaldata)
-        dd_val = self.ws.cell(2, 4).value
-        self.assertEqual(dd_val, "(no digitaldata)")
+        # Verificar col C = error en JSON
+        dd_val = self.ws.cell(2, 3).value
+        self.assertIn("no digitaldata", dd_val or "")
 
         # Verificar metadata incluye el error
-        meta_val = self.ws.cell(2, 7).value
+        meta_val = self.ws.cell(2, 6).value
         self.assertIn("TIMEOUT", meta_val or "")
 
     def test_write_partial_result(self):
@@ -513,13 +514,14 @@ class TestWriteResultIntegration(unittest.TestCase):
         self.assertEqual(metrics["ok_aa"], 0)
         self.assertEqual(metrics["errors"], 1)  # por aa_parsed=None
 
-        # col D = digitaldata
-        dd_val = self.ws.cell(2, 4).value
+        # col C = digitaldata
+        dd_val = self.ws.cell(2, 3).value
         self.assertIn("home", dd_val or "")
 
-        # col E = (no AA data captured)
-        aa_val = self.ws.cell(2, 5).value
-        self.assertEqual(aa_val, "(no AA data captured)")
+        # col D = error en JSON (no "parentizado")
+        aa_val = self.ws.cell(2, 4).value
+        self.assertIn("no AA data captured", aa_val or "")
+        self.assertIn("NO_AA_DATA", aa_val or "")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

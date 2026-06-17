@@ -1,4 +1,4 @@
-﻿"""
+"""
 menu.py - Panel de control para json-convert (zero-dependency TUI).
 
 Uso:
@@ -460,6 +460,17 @@ def op_prune():
         print(_c("red", "\n  [ERROR] Fallo la limpieza."))
 
 
+def op_tests():
+    """Opcion 9: Ejecutar tests."""
+    header("TESTS - pytest")
+    rc = run_step([sys.executable, "-m", "pytest", "--tb=long", "-q"],
+                  "pytest completo", timeout=120)
+    if rc == 0:
+        print(_c("green", "\n  [OK] Todos los tests pasaron."))
+    else:
+        print(_c("red", "\n  [ERROR] Fallaron tests (codigo: " + str(rc) + ")"))
+
+
 def op_ver_resultados():
     """Opcion 6: Abrir Excel."""
     header("RESULTADOS")
@@ -531,8 +542,25 @@ def op_todo_en_uno(target_market=None):
 
     results = []
 
-    # Paso 1: Verificar urls.json
-    print(_c("cyan", "  [1/7] Verificando entorno..."))
+    # Paso 1: Correr tests
+    print()
+    print(_c("cyan", "  [1/8] Ejecutando tests..."))
+    rc = run_step([sys.executable, "-m", "pytest", "--tb=short", "-q"],
+                  "pytest --tb=short -q", timeout=120)
+    if rc != 0:
+        print(_c("yellow", "    ⚠ Tests fallaron (codigo: " + str(rc) + ")"))
+        if not confirm("    Continuar pipeline igual?", default=False):
+            print(_c("red", "    Pipeline abortado por fallo en tests."))
+            results.append(("Tests", rc))
+            # Saltar al resumen
+            print()
+            _pipeline_summary(results)
+            return
+    results.append(("Tests", rc))
+
+    # Paso 2: Verificar urls.json
+    print()
+    print(_c("cyan", "  [2/8] Verificando entorno..."))
     urls_path = os.path.join(BASE_DIR, "urls.json")
     has_urls = os.path.exists(urls_path)
     if not has_urls:
@@ -551,9 +579,9 @@ def op_todo_en_uno(target_market=None):
         print(_c("green", "    urls.json OK"))
         results.append(("Verificar entorno", 0))
 
-    # Paso 2: Auditoria (por mercado)
+    # Paso 3: Auditoria (por mercado)
     print()
-    print(_c("cyan", "  [2/7] Auditoria (extract_browser)..."))
+    print(_c("cyan", "  [3/8] Auditoria (extract_browser)..."))
     if has_urls:
         audit_ok = True
         for m in markets_to_run:
@@ -569,9 +597,9 @@ def op_todo_en_uno(target_market=None):
                       "Ejecutando (modo Excel plano)...", timeout=600)
         results.append(("Auditoria", rc))
 
-    # Paso 3: Post-procesar
+    # Paso 4: Post-procesar
     print()
-    print(_c("cyan", "  [3/7] Post-procesando (extract_aa)..."))
+    print(_c("cyan", "  [4/8] Post-procesando (extract_aa)..."))
     all_markets = detect_markets()
     # Filtrar solo los markets objetivo
     post_markets = [(m, p) for m, p in all_markets if m in markets_to_run or target_market == ALL_MARKETS]
@@ -586,23 +614,23 @@ def op_todo_en_uno(target_market=None):
         print(_c("yellow", "    No hay archivos de auditoria para post-procesar."))
         results.append(("Post-proceso", -1))
 
-    # Paso 4: Limpiar columnas muertas
+    # Paso 5: Limpiar columnas muertas
     print()
-    print(_c("cyan", "  [4/7] Limpiando columnas inutiles..."))
+    print(_c("cyan", "  [5/8] Limpiando columnas inutiles..."))
     rc = run_step([sys.executable, "prune_excel_columns.py"],
                   "prune_excel_columns.py", timeout=30)
     results.append(("Prune columnas", rc))
 
-    # Paso 5: Reporte de fallos (global + por mercado)
+    # Paso 6: Reporte de fallos (global + por mercado)
     print()
-    print(_c("cyan", "  [5/7] Generando reporte de fallos..."))
+    print(_c("cyan", "  [6/8] Generando reporte de fallos..."))
     rc = run_step([sys.executable, "audit_report.py"],
                   "audit_report.py", timeout=60)
     results.append(("Reporte de fallos", rc))
 
-    # Paso 6: Catalogo de migracion
+    # Paso 7: Catalogo de migracion
     print()
-    print(_c("cyan", "  [6/7] Catalogo de migracion..."))
+    print(_c("cyan", "  [7/8] Catalogo de migracion..."))
     mapping_path = os.path.join(BASE_DIR, "url-mapping.json")
     if not os.path.exists(mapping_path):
         rp = os.path.join(BASE_DIR, "RevisionManual.xlsx")
@@ -633,9 +661,9 @@ def op_todo_en_uno(target_market=None):
                 "Catalogo " + m + "...", timeout=60)
             results.append(("Catalogo " + m, rc))
 
-    # Paso 7: Resultados
+    # Paso 8: Resultados
     print()
-    print(_c("cyan", "  [7/7] Resultados..."))
+    print(_c("cyan", "  [8/8] Resultados..."))
     report_path = os.path.join(BASE_DIR, "reporte_auditoria.xlsx")
     if os.path.exists(report_path):
         if confirm("  Abrir el reporte?", default=True):
@@ -646,7 +674,11 @@ def op_todo_en_uno(target_market=None):
                 open_file(hpath)
                 break
 
-    # Resumen final
+    _pipeline_summary(results)
+
+
+def _pipeline_summary(results: list) -> None:
+    """Resumen final del pipeline."""
     separator("=", 55)
     c_print("bold", "  [R] RESUMEN DEL PIPELINE")
     separator("-", 55)
@@ -704,12 +736,13 @@ def show_menu():
     print("  " + _c("bold", "6") + ") " + _c("blue", "[V]") + "  Ver resultados       abrir Excel")
     print("  " + _c("bold", "7") + ") " + _c("magenta", "[M]") + "  Catalogo migracion   generate_migration_catalog.py")
     print("  " + _c("bold", "8") + ") " + _c("yellow", "[P]") + "  Limpiar columnas     prune_excel_columns.py")
+    print("  " + _c("bold", "9") + ") " + _c("green", "[T]") + "  Ejecutar tests       pytest")
     print()
     separator("-", 55)
     print("  " + _c("dim", "0") + ") " + _c("dim", "x  Salir"))
     separator("=", 55)
 
-    return ask_int("  Opcion [0-8]: ", 0, 8)
+    return ask_int("  Opcion [0-9]: ", 0, 9)
 
 
 def run_option(opt, non_interactive=False):
@@ -732,6 +765,8 @@ def run_option(opt, non_interactive=False):
         op_catalogo()
     elif opt == 8:
         op_prune()
+    elif opt == 9:
+        op_tests()
     elif opt == 0:
         print()
         c_print("green", "  Hasta luego!")
@@ -751,7 +786,7 @@ def run_option(opt, non_interactive=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Panel de control json-convert")
     parser.add_argument("--run", type=str,
-                        help="Ejecutar opcion directa: numero 1-8, 0, o 'auto'")
+                        help="Ejecutar opcion directa: numero 1-9, 0, o 'auto'")
     args = parser.parse_args()
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))

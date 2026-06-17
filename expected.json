@@ -1,0 +1,94 @@
+{
+  "markets": {
+    "PR": {
+      "description": "Ford Puerto Rico — migracion al estandar US Global",
+      "prefix": "fpr:",
+      "params": {
+        "pageName": {
+          "label": "PAGE NAMES",
+          "rule": "pattern",
+          "patterns": {
+            "home": "fpr:home",
+            "home-redirect": "fpr:home",
+            "brochures": "fpr:shopping:brochures",
+            "dealerships": "fpr:shopping:dealer-locator",
+            "owners": "fpr:owners:dashboard",
+            "super-duty-f250": "fpr:vehicles:super-duty-f250",
+            "sustainability": "fpr:sustainability:home",
+            "legal": "fpr:help:legal",
+            "privacy": "fpr:help:privacy"
+          },
+          "default_note": "Alinear nomenclatura al estandar de EUA"
+        },
+        "siteSection": {
+          "label": "SITE SECTION (eVar9 / hierarchy)",
+          "rule": "mapping",
+          "mapping": {
+            "home": "home",
+            "home-redirect": "home",
+            "brochures": "shopping",
+            "dealerships": "shopping tools",
+            "owners": "owners",
+            "super-duty-f250": "vehicles",
+            "sustainability": "sustainability",
+            "legal": "help",
+            "privacy": "help"
+          }
+        },
+        "pageNameNoVehicle": {
+          "label": "PAGE NAME NO VEHICLE (eVar11)",
+          "rule": "mirror",
+          "source": "pageName",
+          "note": "Alinear con pageName"
+        },
+        "client": {
+          "label": "CLIENT (eVar14)",
+          "rule": "fixed",
+          "value": "ford-puerto rico",
+          "note": "Formatear cliente (estandar EUA)"
+        },
+        "site": {
+          "label": "SITE (eVar15)",
+          "rule": "fixed",
+          "value": "ford-brand"
+        },
+        "variantName": {
+          "label": "VARIANT NAME (Direct Call)",
+          "rule": "mapping",
+          "mapping": {
+            "home": "home-load",
+            "home-redirect": "home-load",
+            "brochures": "gallery-load",
+            "dealerships": "fd-load",
+            "owners": "owners-load",
+            "super-duty-f250": "vhp-load",
+            "sustainability": "global-load",
+            "legal": "global-load",
+            "privacy": "global-load"
+          }
+        },
+        "pageType": {
+          "label": "PAGE TYPE (eVar129)",
+          "rule": "required",
+          "mapping": {
+            "home": "home",
+            "home-redirect": "home",
+            "brochures": "shopping-tools",
+            "dealerships": "shopping-tools",
+            "owners": "owners",
+            "super-duty-f250": "vhp",
+            "sustainability": "sustainability",
+            "legal": "help",
+            "privacy": "help"
+          },
+          "note": "Nuevo parametro del componente de EUA"
+        },
+        "userLanguage": {
+          "label": "USER LANGUAGE (eVar4)",
+          "rule": "deprecated",
+          "note": "No se ocupa en el nuevo componente (se unifica en Launch)"
+        }
+      }
+    }
+  }
+}
