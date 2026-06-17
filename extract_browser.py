@@ -84,6 +84,7 @@ async def write_result(
     show_progress: bool = False,
     total_urls: int = 0,
     workers: int = 1,
+    start_time: float | None = None,
 ) -> None:
     """
     Escribe el resultado de una URL en el Excel.
@@ -137,7 +138,8 @@ async def write_result(
             save_workbook(ws.parent, output_path)
             logging.info("  Guardado incremental (#%d)", saved_count[0])
         if show_progress:
-            print_progress(saved_count[0], total_urls, metrics["errors"], workers)
+            print_progress(saved_count[0], total_urls, metrics["errors"], workers,
+                           start_time=start_time)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -507,6 +509,8 @@ async def _run_pipeline(context, urls, args, ws, output_path):
             finally:
                 await page.close()
 
+    pipeline_start = time.perf_counter()
+
     async def _worker(row, url):
         if _shutdown_flag:
             return
@@ -529,6 +533,7 @@ async def _run_pipeline(context, urls, args, ws, output_path):
                 show_progress=bool(args.progress),
                 total_urls=metrics["total"],
                 workers=args.workers or 3,
+                start_time=pipeline_start,
             )
         except Exception as e:
             logging.error("[%s] Error escribiendo resultado: %s", url[:60], e)
@@ -537,8 +542,11 @@ async def _run_pipeline(context, urls, args, ws, output_path):
             errors_detail.append({"row": row, "error": result["error"]})
 
         if not args.progress:
+            url_index = row - 1  # 1-based URL index
             status = "OK" if not result.get("error") else "ERR"
-            logging.info("[%d/%d] %s %s", len(results), metrics["total"], status, url[:80])
+            elapsed = time.perf_counter() - pipeline_start
+            logging.info("[URL %d/%d] %s %s  (%ds)", url_index, metrics["total"],
+                         status, url[:60], int(elapsed))
 
     tasks = [_worker(row, url) for row, url in urls]
     await asyncio.gather(*tasks, return_exceptions=True)

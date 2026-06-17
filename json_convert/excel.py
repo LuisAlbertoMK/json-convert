@@ -300,12 +300,21 @@ def update_vars_sheet(wb, audit_date: str, rows_aa: list[tuple[int, dict]]):
 # PROGRESS
 # ═══════════════════════════════════════════════════════════════════════════
 
-def print_progress(done: int, total: int, errors: int, workers: int):
-    """Muestra barra de progreso en consola."""
+def print_progress(done: int, total: int, errors: int, workers: int,
+                   start_time: float | None = None):
+    """Muestra barra de progreso en consola con elapsed + ETA."""
+    import time as _time
     pct = done / max(total, 1) * 100
     bar_len = 30
     filled = int(bar_len * done / max(total, 1))
-    bar = "█" * filled + "░" * (bar_len - filled)
-    sep = "=" * 50
-    print(f"\n{sep}\n  PROGRESO: {done}/{total} ({pct:.0f}%)  Errores: {errors}\n{sep}")
-    print(f"  [{bar}] {done}/{total}")
+    bar = "#" * filled + "." * (bar_len - filled)
+    elapsed_str = ""
+    eta_str = ""
+    if start_time is not None and done > 0:
+        elapsed = _time.perf_counter() - start_time
+        rate = elapsed / done
+        remaining = total - done
+        eta = rate * remaining
+        elapsed_str = f"  Elapsed: {elapsed:.0f}s"
+        eta_str = f"  ETA: {eta:.0f}s"
+    print(f"  [{bar}] {done}/{total} ({pct:.0f}%)  Err: {errors}{elapsed_str}{eta_str}")
