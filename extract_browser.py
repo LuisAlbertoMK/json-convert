@@ -320,14 +320,20 @@ async def amain():
 
     # ── Playwright ──
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
+        # Usar Chrome real (evita bloqueo Akamai WAF); fallback a bundled Chromium
+        launch_kwargs = dict(
             headless=not args.headed,
             args=["--disable-blink-features=AutomationControlled"],
             proxy={"server": args.proxy} if args.proxy else None,
         )
+        try:
+            browser = await pw.chromium.launch(channel="chrome", **launch_kwargs)
+        except Exception:
+            logging.info("Chrome no disponible, usando Chromium bundled")
+            browser = await pw.chromium.launch(**launch_kwargs)
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                       "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             locale="es_PR" if "es" in url_source else "en_US",
             viewport={"width": 1920, "height": 1080},
             ignore_https_errors=True if args.proxy else False,
