@@ -278,15 +278,96 @@ def op_reporte():
         print("  Ejecuta primero una auditoria (opcion 1 o 2).")
         return
 
-    code = run_step([sys.executable, "audit_report.py"],
-                    "Generando reporte...", timeout=60)
+    code = run_step([sys.executable, "audit_report.py", "--per-market"],
+                    "Generando reporte (global + por mercado)...", timeout=60)
 
     if code == 0:
-        print(_c("green", "\n  [OK] Reporte generado: reporte_auditoria.xlsx"))
-        if confirm("  Abrirlo ahora?"):
+        print(_c("green", "\n  [OK] Reporte global generado: reporte_auditoria.xlsx"))
+        markets = detect_markets()
+        for m, _ in markets:
+            if m != "RAIZ":
+                print(_c("green", f"       {m}/reporte-auditoria.xlsx"))
+        if confirm("  Abrir el global?"):
             open_file("reporte_auditoria.xlsx")
     else:
         print(_c("red", "\n  [ERROR] Fallo la generacion del reporte."))
+
+
+def op_catalogo():
+    """Opcion 7: Generar catalog de migracion."""
+    header("CATALOGO DE MIGRACION - generate_migration_catalog.py")
+
+    # Verificar que existe historial
+    markets = detect_markets()
+    if not markets:
+        print(_c("yellow", "  No se encontraron archivos de auditoria."))
+        print("  Ejecuta primero una auditoria (opcion 1 o 2).")
+        return
+
+    # Elegir mercado
+    print(_c("cyan", "  Mercados detectados:"))
+    for i, (m, hpath) in enumerate(markets, 1):
+        print("    " + str(i) + ". " + m + " (" + os.path.relpath(hpath, BASE_DIR) + ")")
+
+    if len(markets) == 1:
+        m_idx = 1
+    else:
+        m_idx = ask_int("  Selecciona mercado [1-" + str(len(markets)) + "]: ", 1, len(markets))
+
+    market_name, historial_path = markets[m_idx - 1]
+
+    # Verificar url-mapping.json
+    mapping_path = os.path.join(BASE_DIR, "url-mapping.json")
+    if not os.path.exists(mapping_path):
+        print(_c("yellow", "\n  No se encuentra url-mapping.json"))
+        if confirm("  Generar template desde RevisionManual.xlsx?", default=True):
+            input_path = os.path.join(BASE_DIR, "RevisionManual.xlsx")
+            if os.path.exists(input_path):
+                run_step(
+                    [sys.executable, "generate_migration_catalog.py",
+                     "--gen-template", "--input", input_path,
+                     "--mapping", "url-mapping.json"],
+                    "Generando template url-mapping.json...")
+                print(_c("yellow", "\n  [!] EDITAR url-mapping.json con production_url, aem_path y page_key"))
+                print("      Despues ejecutar esta opcion nuevamente.")
+            else:
+                print(_c("red", "  No se encuentra RevisionManual.xlsx"))
+        return
+
+    # Verificar expected.json
+    expected_path = os.path.join(BASE_DIR, "expected.json")
+    if not os.path.exists(expected_path):
+        print(_c("red", "  No se encuentra expected.json"))
+        print("  Debe existir con las reglas del estandar US para cada mercado.")
+        return
+
+    # Generar catalogo
+    output_name = "catalogo-migracion.xlsx"
+    output_path = os.path.join(BASE_DIR, market_name, output_name)
+
+    # Mostrar resumen antes de ejecutar
+    print()
+    print(_c("cyan", "  Resumen:"))
+    print("    Mercado:      " + market_name)
+    print("    Historial:    " + os.path.relpath(historial_path, BASE_DIR))
+    print("    Mapping:      url-mapping.json")
+    print("    Expected:     expected.json")
+    print("    Output:       " + market_name + "/" + output_name)
+    print()
+
+    if confirm("  Generar catalogo?", default=True):
+        run_step(
+            [sys.executable, "generate_migration_catalog.py",
+             "--historial", historial_path,
+             "--mapping", "url-mapping.json",
+             "--expected", "expected.json",
+             "--market", market_name],
+            "Generando catalogo de migracion...", timeout=60)
+
+        if os.path.exists(output_path):
+            print(_c("green", "\n  [OK] Catalogo generado: " + market_name + "/" + output_name))
+            if confirm("  Abrirlo ahora?", default=True):
+                open_file(output_path)
 
 
 def op_limpieza():
@@ -344,7 +425,7 @@ def op_todo_en_uno():
     results = []
 
     # Paso 1: Verificar urls.json
-    print(_c("cyan", "  [1/5] Verificando entorno..."))
+    print(_c("cyan", "  [1/6] Verificando entorno..."))
     urls_path = os.path.join(BASE_DIR, "urls.json")
     has_urls = os.path.exists(urls_path)
     if not has_urls:
@@ -365,7 +446,7 @@ def op_todo_en_uno():
 
     # Paso 2: Auditoria (por mercado)
     print()
-    print(_c("cyan", "  [2/5] Auditoria (extract_browser)..."))
+    print(_c("cyan", "  [2/6] Auditoria (extract_browser)..."))
     if has_urls:
         url_markets = get_markets_from_urls()
         if url_markets:
@@ -392,7 +473,7 @@ def op_todo_en_uno():
 
     # Paso 3: Post-procesar
     print()
-    print(_c("cyan", "  [3/5] Post-procesando (extract_aa)..."))
+    print(_c("cyan", "  [3/6] Post-procesando (extract_aa)..."))
     markets = detect_markets()
     processed_any = False
     for m, hpath in markets:
@@ -411,15 +492,49 @@ def op_todo_en_uno():
         print(_c("yellow", "    No hay archivos de auditoria para post-procesar."))
         results.append(("Post-proceso", -1))
 
-    # Paso 4: Reporte de fallos
+    # Paso 4: Reporte de fallos (global + por mercado)
     print()
-    print(_c("cyan", "  [4/5] Generando reporte de fallos..."))
-    rc = run_step([sys.executable, "audit_report.py"], "audit_report.py", timeout=60)
+    print(_c("cyan", "  [4/6] Generando reporte de fallos..."))
+    rc = run_step([sys.executable, "audit_report.py", "--per-market"],
+                  "audit_report.py", timeout=60)
     results.append(("Reporte de fallos", rc))
 
-    # Paso 5: Resultados
+    # Paso 5: Catalogo de migracion
     print()
-    print(_c("cyan", "  [5/5] Resultados..."))
+    print(_c("cyan", "  [5/6] Catalogo de migracion..."))
+    mapping_path = os.path.join(BASE_DIR, "url-mapping.json")
+    if not os.path.exists(mapping_path):
+        rp = os.path.join(BASE_DIR, "RevisionManual.xlsx")
+        if os.path.exists(rp):
+            print(_c("yellow", "    No se encuentra url-mapping.json"))
+            if confirm("    Generar template desde RevisionManual.xlsx?", default=True):
+                rc = run_step(
+                    [sys.executable, "generate_migration_catalog.py",
+                     "--gen-template", "--input", rp, "--mapping", "url-mapping.json"],
+                    "Generando url-mapping.json...")
+                if rc == 0:
+                    print(_c("yellow", "    [!] EDITAR url-mapping.json con production_url, aem_path y page_key"))
+                results.append(("Template url-mapping", rc))
+            else:
+                results.append(("Template url-mapping", -1))
+        else:
+            print(_c("yellow", "    No hay RevisionManual.xlsx ni url-mapping.json - saltando catalogo"))
+            results.append(("Catalogo migracion", -1))
+
+    if os.path.exists(mapping_path) and os.path.exists(os.path.join(BASE_DIR, "expected.json")):
+        for m, hpath in detect_markets():
+            rc = run_step(
+                [sys.executable, "generate_migration_catalog.py",
+                 "--historial", hpath,
+                 "--mapping", "url-mapping.json",
+                 "--expected", "expected.json",
+                 "--market", m],
+                "Catalogo " + m + "...", timeout=60)
+            results.append(("Catalogo " + m, rc))
+
+    # Paso 6: Resultados
+    print()
+    print(_c("cyan", "  [6/6] Resultados..."))
     report_path = os.path.join(BASE_DIR, "reporte_auditoria.xlsx")
     if os.path.exists(report_path):
         if confirm("  Abrir el reporte?", default=True):
@@ -486,12 +601,13 @@ def show_menu():
     print("  " + _c("bold", "4") + ") " + _c("magenta", "[R]") + "  Solo reporte fallos  audit_report.py")
     print("  " + _c("bold", "5") + ") " + _c("yellow", "[C]") + "  Solo limpieza        run.ps1")
     print("  " + _c("bold", "6") + ") " + _c("blue", "[V]") + "  Ver resultados       abrir Excel")
+    print("  " + _c("bold", "7") + ") " + _c("magenta", "[M]") + "  Catalogo migracion   generate_migration_catalog.py")
     print()
     separator("-", 55)
     print("  " + _c("dim", "0") + ") " + _c("dim", "x  Salir"))
     separator("=", 55)
 
-    return ask_int("  Opcion [0-6]: ", 0, 6)
+    return ask_int("  Opcion [0-7]: ", 0, 7)
 
 
 def run_option(opt):
@@ -510,6 +626,8 @@ def run_option(opt):
         op_limpieza()
     elif opt == 6:
         op_ver_resultados()
+    elif opt == 7:
+        op_catalogo()
     elif opt == 0:
         print()
         c_print("green", "  Hasta luego!")
@@ -550,7 +668,7 @@ if __name__ == "__main__":
 
     # Modo directo --run
     if args.run:
-        opt_map = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6,
+        opt_map = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
                    "0": 0, "auto": 1}
         opt = opt_map.get(args.run, -1)
         if opt < 0:

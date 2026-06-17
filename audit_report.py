@@ -343,6 +343,27 @@ def _write_data_sheet(wb, title: str, data: list[dict], highlight_fill, highligh
     ws.auto_filter.ref = f"A1:{chr(64 + len(OUTPUT_HEADERS))}{len(data) + 1}"
 
 
+def generate_per_market_reports(pages: list[dict], base_dir: str, verbose: bool = False):
+    """Genera un reporte individual por mercado en su carpeta."""
+    by_market: dict[str, list[dict]] = {}
+    for p in pages:
+        m = p.get("mercado", "ROOT")
+        if m not in by_market:
+            by_market[m] = []
+        by_market[m].append(p)
+
+    for market, market_pages in by_market.items():
+        if market == "ROOT":
+            continue  # el global ya cubre ROOT
+        market_dir = os.path.join(base_dir, market)
+        os.makedirs(market_dir, exist_ok=True)
+        output_path = os.path.join(market_dir, "reporte-auditoria.xlsx")
+        failed, sorted_pages = build_report(market_pages)
+        write_report(failed, sorted_pages, output_path)
+        if verbose:
+            print(f"    → {market}/reporte-auditoria.xlsx ({len(market_pages)} URLs, {len(failed)} fallos)")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Reporte de URLs fallidas desde archivos de auditoría AA",
@@ -354,6 +375,7 @@ Ejemplos:
   python audit_report.py --dir PR --dir MX             # PR y MX
   python audit_report.py --input PR/historial.xlsx     # archivo directo
   python audit_report.py --output fallos.xlsx          # nombre custom
+  python audit_report.py --per-market                  # + reporte individual por carpeta
         """,
     )
     parser.add_argument("--dir", action="append", dest="dirs",
@@ -361,6 +383,8 @@ Ejemplos:
     parser.add_argument("--input", help="Ruta directa a un historial.xlsx")
     parser.add_argument("--output", default="reporte_auditoria.xlsx",
                         help="Archivo Excel de salida (default: reporte_auditoria.xlsx)")
+    parser.add_argument("--per-market", action="store_true",
+                        help="Genera también reportes individuales en {market}/reporte-auditoria.xlsx")
     parser.add_argument("--verbose", action="store_true", help="Logging detallado")
 
     args = parser.parse_args()
@@ -370,7 +394,6 @@ Ejemplos:
     sources = []
     if args.input:
         if os.path.exists(args.input):
-            # Inferir mercado del path
             parent = os.path.basename(os.path.dirname(os.path.abspath(args.input)))
             market = parent.upper() if parent and parent != "." and not parent.startswith("_") else "ROOT"
             sources.append((args.input, market))
@@ -404,9 +427,13 @@ Ejemplos:
         print("[!] No se encontraron datos de auditoría en los archivos.")
         sys.exit(1)
 
-    # Generar reporte
+    # Generar reporte global
     failed, all_sorted = build_report(all_pages)
     output_path = write_report(failed, all_sorted, args.output)
+
+    # Generar reportes por mercado
+    if args.per_market:
+        generate_per_market_reports(all_pages, base, args.verbose)
 
     # Mostrar resumen
     total = len(all_pages)
@@ -415,7 +442,11 @@ Ejemplos:
     nodata_count = sum(1 for p in all_pages if p["estado"] == "SIN_DATOS")
 
     print(f"{'='*55}")
-    print(f"  REPORTE GENERADO: {output_path}")
+    print(f"  REPORTE GLOBAL:   {output_path}")
+    if args.per_market:
+        markets = sorted(set(p.get("mercado", "ROOT") for p in all_pages if p.get("mercado") != "ROOT"))
+        for m in markets:
+            print(f"  {m}/reporte-auditoria.xlsx")
     print(f"{'='*55}")
     print(f"  Total URLs:       {total}")
     print(f"  Funcionando (OK): {ok_count}")
