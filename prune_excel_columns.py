@@ -13,6 +13,7 @@ Uso:
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -81,7 +82,19 @@ def prune_file(path: str, dry_run: bool = False) -> dict:
                 stats["rows"] += ws.max_row
 
     if not dry_run:
-        wb.save(path)
+        # Retry si OneDrive/Excel tiene el archivo bloqueado
+        for attempt in range(4):
+            try:
+                wb.save(path)
+                break
+            except PermissionError:
+                if attempt < 3:
+                    time.sleep(2)
+                else:
+                    name, ext = os.path.splitext(path)
+                    fallback = f"{name}_pruned{ext}"
+                    wb.save(fallback)
+                    print(f"  [!] Lock persistente, guardado como: {os.path.basename(fallback)}")
     wb.close()
     return stats
 

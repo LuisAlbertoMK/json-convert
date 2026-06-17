@@ -32,6 +32,24 @@ ALL_FIELDS = [
 ]
 
 
+def _auto_row_height(ws):
+    """Ajusta alto de filas segun el maximo de lineas JSON en cols C-D-E-F (3-6)."""
+    JSON_COLS = [3, 4, 5, 6]
+    LINE_HEIGHT = 15  # puntos por linea aprox para Calibri 11
+    MAX_HEIGHT = 409  # limite Excel
+    for row in range(2, ws.max_row + 1):
+        max_lines = 1
+        for col in JSON_COLS:
+            val = ws.cell(row, col).value
+            if val:
+                lines = str(val).count("\n") + 1
+                max_lines = max(max_lines, lines)
+        height = min(max_lines * LINE_HEIGHT, MAX_HEIGHT)
+        current = ws.row_dimensions[row].height
+        if current is None or height > current:
+            ws.row_dimensions[row].height = height
+
+
 def _save_workbook(wb, path):
     try:
         wb.save(path)
@@ -39,9 +57,24 @@ def _save_workbook(wb, path):
     except PermissionError:
         name, ext = os.path.splitext(path)
         fallback = f"{name}_limpio{ext}"
-        wb.save(fallback)
-        logging.warning("Archivo bloqueado, guardado como %s", fallback)
-        return fallback
+        try:
+            wb.save(fallback)
+            logging.warning("Archivo bloqueado, guardado como %s", fallback)
+            return fallback
+        except PermissionError:
+            import time
+            for attempt in range(3):
+                try:
+                    time.sleep(2)
+                    wb.save(path)
+                    logging.info("Recuperado tras %ds de espera", (attempt + 1) * 2)
+                    return path
+                except PermissionError:
+                    continue
+            fallback2 = f"{name}_limpio{int(time.time())}{ext}"
+            wb.save(fallback2)
+            logging.warning("Lock persistente, guardado como %s", fallback2)
+            return fallback2
 
 
 def extract_fields(data: dict, keep: list[str]) -> dict:
@@ -176,6 +209,9 @@ def main():
 
     # Ancho col E
     ws.column_dimensions["E"].width = 80
+
+    # Auto-ajuste alto de filas segun contenido JSON
+    _auto_row_height(ws)
 
     # Guardar
     out = _save_workbook(wb, args.input)

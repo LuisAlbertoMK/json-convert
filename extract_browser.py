@@ -135,6 +135,24 @@ def _set_col_widths(ws):
     for col, w in [("A", 15), ("B", 15), ("C", 80), ("D", 100), ("E", 80), ("F", 60)]:
         ws.column_dimensions[col].width = w
 
+
+def _auto_row_height(ws):
+    """Ajusta alto de filas segun el maximo de lineas JSON en cols 3-4-5-6."""
+    JSON_COLS = [3, 4, 5, 6]
+    LINE_HEIGHT = 15
+    MAX_HEIGHT = 409
+    for row in range(2, ws.max_row + 1):
+        max_lines = 1
+        for col in JSON_COLS:
+            val = ws.cell(row, col).value
+            if val:
+                lines = str(val).count("\n") + 1
+                max_lines = max(max_lines, lines)
+        height = min(max_lines * LINE_HEIGHT, MAX_HEIGHT)
+        current = ws.row_dimensions[row].height
+        if current is None or height > current:
+            ws.row_dimensions[row].height = height
+
 def _write_cell(ws, row, col, value, wrap=True):
     cell = ws.cell(row, col)
     cell.value = value
@@ -349,9 +367,25 @@ def save_workbook(wb, path):
     except PermissionError:
         name, ext = os.path.splitext(path)
         fallback = f"{name}_browser{ext}"
-        wb.save(fallback)
-        logging.warning("Archivo bloqueado, guardado como %s", fallback)
-        return fallback
+        try:
+            wb.save(fallback)
+            logging.warning("Archivo bloqueado, guardado como %s", fallback)
+            return fallback
+        except PermissionError:
+            # Segundo intento con retry
+            import time
+            for attempt in range(3):
+                try:
+                    time.sleep(2)
+                    wb.save(path)
+                    logging.info("Recuperado tras %ds de espera", (attempt + 1) * 2)
+                    return path
+                except PermissionError:
+                    continue
+            fallback2 = f"{name}_browser{int(time.time())}{ext}"
+            wb.save(fallback2)
+            logging.warning("Lock persistente, guardado como %s", fallback2)
+            return fallback2
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -739,7 +773,8 @@ def split_aa_workbooks(wb, audit_date: str, output_dir: str):
                     dst.fill = copy(src.fill) if src.fill else None
         _set_col_widths(sws)
         apply_data_fills(sws)
-        swb.save(path)
+        _auto_row_height(sws)
+        save_workbook(swb, path)
         swb.close()
         logging.info("Split %s: %d filas -> %s", suffix, len(rows), path)
 
@@ -1174,6 +1209,7 @@ async def amain():
         except Exception as e:
             logging.warning("No se pudo crear backup: %s", e)
 
+    _auto_row_height(ws)
     out = save_workbook(wb, output_path)
 
     # ── Split AA (con_aa / sin_aa) ──
