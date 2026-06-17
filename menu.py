@@ -604,87 +604,114 @@ def op_todo_en_uno(target_market=None):
         results.append(("Verificar entorno", 0))
 
     # Paso 3: Auditoria (por mercado)
+    # ── ¿Saltar si ya hay historiales de corridas anteriores? ──
     print()
     print(_c("cyan", "  [3/8] Auditoria (extract_browser)..."))
-    if has_urls:
-        audit_ok = True
-        for m in markets_to_run:
-            n = _count_urls(m)
-            rc = run_step(
-                [sys.executable, "extract_browser.py", "--urls", "urls.json",
-                 "--market", m, "--split-aa", "--progress"],
-                f"Auditando {m} ({n} URLs)...", timeout=600)
-            results.append(("Auditoria " + m, rc))
-            if rc != 0:
-                audit_ok = False
+    existing_historiales = detect_markets()
+    skip_audit = False
+    if existing_historiales and has_urls:
+        skip_audit = True
+        print(_c("dim", f"    Ya existen historiales: {', '.join(m for m,_ in existing_historiales)}"))
+        if confirm("    Usar historiales existentes (saltar auditoria)?", default=True):
+            print(_c("green", "    Saltando auditoria — usando datos existentes."))
+            results.append(("Auditoria (saltada)", 0))
+            audit_ok = True
+        else:
+            skip_audit = False
+
+    if not skip_audit:
+        if has_urls:
+            audit_ok = True
+            for m in markets_to_run:
+                n = _count_urls(m)
+                rc = run_step(
+                    [sys.executable, "extract_browser.py", "--urls", "urls.json",
+                     "--market", m, "--split-aa", "--progress"],
+                    f"Auditando {m} ({n} URLs)...", timeout=600)
+                results.append(("Auditoria " + m, rc))
+                if rc != 0:
+                    audit_ok = False
+        else:
+            rc = run_step([sys.executable, "extract_browser.py"],
+                          "Ejecutando (modo Excel plano)...", timeout=600)
+            results.append(("Auditoria", rc))
+            audit_ok = (rc == 0)
+
+    # ── Si la auditoría falló, saltar pasos dependientes ──
+    if not audit_ok:
+        print()
+        print(_c("red", "  ⚠ Auditoría falló — revisá VPN/conexión a las URLs."))
+        print(_c("yellow", "    Saltando post-proceso, limpieza, reporte y catálogo."))
+        results.append(("Post-proceso", -2))
+        results.append(("Prune columnas", -2))
+        results.append(("Reporte de fallos", -2))
+        results.append(("Catálogo migración", -2))
+        # Ir directo a resultados
+        post_markets = []
     else:
-        rc = run_step([sys.executable, "extract_browser.py"],
-                      "Ejecutando (modo Excel plano)...", timeout=600)
-        results.append(("Auditoria", rc))
+        # Paso 4: Post-procesar
+        print()
+        print(_c("cyan", "  [4/8] Post-procesando (extract_aa)..."))
+        all_markets = detect_markets()
+        # Filtrar solo los markets objetivo
+        post_markets = [(m, p) for m, p in all_markets if m in markets_to_run or target_market == ALL_MARKETS]
+        processed_any = False
+        for m, hpath in post_markets:
+            _run_extract_aa(hpath)
+            results.append(("Post-proceso " + m, 0))
+            processed_any = True
+            _run_extract_aa_companions(hpath)
 
-    # Paso 4: Post-procesar
-    print()
-    print(_c("cyan", "  [4/8] Post-procesando (extract_aa)..."))
-    all_markets = detect_markets()
-    # Filtrar solo los markets objetivo
-    post_markets = [(m, p) for m, p in all_markets if m in markets_to_run or target_market == ALL_MARKETS]
-    processed_any = False
-    for m, hpath in post_markets:
-        _run_extract_aa(hpath)
-        results.append(("Post-proceso " + m, 0))
-        processed_any = True
-        _run_extract_aa_companions(hpath)
+        if not processed_any:
+            print(_c("yellow", "    No hay archivos de auditoria para post-procesar."))
+            results.append(("Post-proceso", -1))
 
-    if not processed_any:
-        print(_c("yellow", "    No hay archivos de auditoria para post-procesar."))
-        results.append(("Post-proceso", -1))
+        # Paso 5: Limpiar columnas muertas
+        print()
+        print(_c("cyan", "  [5/8] Limpiando columnas inutiles..."))
+        rc = run_step([sys.executable, "prune_excel_columns.py"],
+                      "prune_excel_columns.py", timeout=30)
+        results.append(("Prune columnas", rc))
 
-    # Paso 5: Limpiar columnas muertas
-    print()
-    print(_c("cyan", "  [5/8] Limpiando columnas inutiles..."))
-    rc = run_step([sys.executable, "prune_excel_columns.py"],
-                  "prune_excel_columns.py", timeout=30)
-    results.append(("Prune columnas", rc))
+        # Paso 6: Reporte de fallos (global + por mercado)
+        print()
+        print(_c("cyan", "  [6/8] Generando reporte de fallos..."))
+        rc = run_step([sys.executable, "audit_report.py"],
+                      "audit_report.py", timeout=60)
+        results.append(("Reporte de fallos", rc))
 
-    # Paso 6: Reporte de fallos (global + por mercado)
-    print()
-    print(_c("cyan", "  [6/8] Generando reporte de fallos..."))
-    rc = run_step([sys.executable, "audit_report.py"],
-                  "audit_report.py", timeout=60)
-    results.append(("Reporte de fallos", rc))
+        # Paso 7: Catalogo de migracion
+        print()
+        print(_c("cyan", "  [7/8] Catalogo de migracion..."))
+        mapping_path = os.path.join(BASE_DIR, "url-mapping.json")
+        if not os.path.exists(mapping_path):
+            rp = os.path.join(BASE_DIR, "RevisionManual.xlsx")
+            if os.path.exists(rp):
+                print(_c("yellow", "    No se encuentra url-mapping.json"))
+                if confirm("    Generar template desde RevisionManual.xlsx?", default=True):
+                    rc = run_step(
+                        [sys.executable, "generate_migration_catalog.py",
+                         "--gen-template", "--input", rp, "--mapping", "url-mapping.json"],
+                        "Generando url-mapping.json...")
+                    if rc == 0:
+                        print(_c("yellow", "    [!] EDITAR url-mapping.json con production_url, aem_path y page_key"))
+                    results.append(("Template url-mapping", rc))
+                else:
+                    results.append(("Template url-mapping", -1))
+            else:
+                print(_c("yellow", "    No hay RevisionManual.xlsx ni url-mapping.json - saltando catalogo"))
+                results.append(("Catalogo migracion", -1))
 
-    # Paso 7: Catalogo de migracion
-    print()
-    print(_c("cyan", "  [7/8] Catalogo de migracion..."))
-    mapping_path = os.path.join(BASE_DIR, "url-mapping.json")
-    if not os.path.exists(mapping_path):
-        rp = os.path.join(BASE_DIR, "RevisionManual.xlsx")
-        if os.path.exists(rp):
-            print(_c("yellow", "    No se encuentra url-mapping.json"))
-            if confirm("    Generar template desde RevisionManual.xlsx?", default=True):
+        if os.path.exists(mapping_path) and os.path.exists(os.path.join(BASE_DIR, "expected.json")):
+            for m, hpath in post_markets:
                 rc = run_step(
                     [sys.executable, "generate_migration_catalog.py",
-                     "--gen-template", "--input", rp, "--mapping", "url-mapping.json"],
-                    "Generando url-mapping.json...")
-                if rc == 0:
-                    print(_c("yellow", "    [!] EDITAR url-mapping.json con production_url, aem_path y page_key"))
-                results.append(("Template url-mapping", rc))
-            else:
-                results.append(("Template url-mapping", -1))
-        else:
-            print(_c("yellow", "    No hay RevisionManual.xlsx ni url-mapping.json - saltando catalogo"))
-            results.append(("Catalogo migracion", -1))
-
-    if os.path.exists(mapping_path) and os.path.exists(os.path.join(BASE_DIR, "expected.json")):
-        for m, hpath in post_markets:
-            rc = run_step(
-                [sys.executable, "generate_migration_catalog.py",
-                 "--historial", hpath,
-                 "--mapping", "url-mapping.json",
-                 "--expected", "expected.json",
-                 "--market", m],
-                "Catalogo " + m + "...", timeout=60)
-            results.append(("Catalogo " + m, rc))
+                     "--historial", hpath,
+                     "--mapping", "url-mapping.json",
+                     "--expected", "expected.json",
+                     "--market", m],
+                    "Catalogo " + m + "...", timeout=60)
+                results.append(("Catalogo " + m, rc))
 
     # Paso 8: Resultados
     print()
