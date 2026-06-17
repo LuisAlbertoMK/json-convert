@@ -130,16 +130,16 @@ def main():
         logging.info("Sheet auto-detectado: '%s'", candidates[0])
 
     # Validar col E
-    e_header = str(ws.cell(1, 5).value or "").strip().lower()
+    e_header = str(ws.cell(1, 4).value or "").strip().lower()
     if e_header and "analytics" not in e_header:
-        logging.warning("Col E header no esperado: '%s'", ws.cell(1, 5).value)
+        logging.warning("Col D header no esperado: '%s'", ws.cell(1, 4).value)
 
     total = 0
     errores = []
     stats_rows = []
 
     for row in range(2, ws.max_row + 1):
-        raw = ws.cell(row, 5).value  # col E
+        raw = ws.cell(row, 4).value  # col D (AA analytics)
         if not raw:
             errores.append((row, "COL_E_EMPTY", "col E vacia"))
             continue
@@ -164,7 +164,7 @@ def main():
             continue
 
         pretty = json.dumps(extracted, indent=2, ensure_ascii=False)
-        cell = ws.cell(row, 6)
+        cell = ws.cell(row, 5)
         cell.value = pretty
         cell.number_format = "@"  # texto plano — evita que Excel interprete JSON como numero/fecha
         cell.alignment = Alignment(wrap_text=True, vertical="top")
@@ -174,8 +174,8 @@ def main():
         if args.score:
             stats_rows.append({"row": row, "fields": list(extracted.keys()), **count_values(extracted)})
 
-    # Ancho col F
-    ws.column_dimensions["F"].width = 80
+    # Ancho col E
+    ws.column_dimensions["E"].width = 80
 
     # Guardar
     out = _save_workbook(wb, args.input)

@@ -20,11 +20,19 @@ Formato del reporte (Excel):
 """
 
 import argparse
+import io
 import json
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
+
+# Force UTF-8 stdout for Windows cp1252 terminal
+if sys.stdout.encoding and sys.stdout.encoding.upper() not in ("UTF-8", "CP65001"):
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 try:
     import openpyxl
@@ -164,11 +172,10 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
                 continue
 
             nombre = ws.cell(row, 1).value or ""
-            col_c = ws.cell(row, 3).value  # digitaldata manual
-            col_d = ws.cell(row, 4).value  # digitaldata automatica
-            col_e = ws.cell(row, 5).value  # AA analytics
-            col_f = ws.cell(row, 6).value  # AA estructurado
-            col_g = ws.cell(row, 7).value  # metadata
+            col_d = ws.cell(row, 3).value  # digitaldata automatica
+            col_e = ws.cell(row, 4).value  # AA analytics
+            col_f = ws.cell(row, 5).value  # AA estructurado
+            col_g = ws.cell(row, 6).value  # metadata
 
             meta = parse_meta_col(str(col_g) if col_g else "")
             estado, detalle, score = determine_status(
@@ -179,7 +186,7 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
 
             # Detectar si tiene digitaldata
             dd_status = "OK"
-            if not col_c and (not col_d or "(no digitaldata)" in str(col_d)):
+            if not col_d or "(no digitaldata)" in str(col_d):
                 dd_status = "NO"
 
             pages[url] = {
@@ -211,8 +218,8 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
                     continue
                 url = str(url).strip()
                 nombre = ws2.cell(row, 1).value or ""
-                col_e = ws2.cell(row, 5).value
-                col_g = ws2.cell(row, 7).value
+                col_e = ws2.cell(row, 4).value
+                col_g = ws2.cell(row, 6).value
                 meta = parse_meta_col(str(col_g) if col_g else "")
                 estado, detalle, score = determine_status(
                     str(col_e) if col_e else "", "", meta
@@ -361,7 +368,7 @@ def generate_per_market_reports(pages: list[dict], base_dir: str, verbose: bool 
         failed, sorted_pages = build_report(market_pages)
         write_report(failed, sorted_pages, output_path)
         if verbose:
-            print(f"    → {market}/reporte-auditoria.xlsx ({len(market_pages)} URLs, {len(failed)} fallos)")
+            print(f"    >> {market}/reporte-auditoria.xlsx ({len(market_pages)} URLs, {len(failed)} fallos)")
 
 
 def main():

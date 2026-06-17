@@ -132,7 +132,7 @@ def _pretty_json(obj):
     return json.dumps(obj, indent=2, ensure_ascii=False)
 
 def _set_col_widths(ws):
-    for col, w in [("A", 15), ("B", 15), ("D", 80), ("E", 100), ("F", 80), ("G", 60)]:
+    for col, w in [("A", 15), ("B", 15), ("C", 80), ("D", 100), ("E", 80), ("F", 60)]:
         ws.column_dimensions[col].width = w
 
 def _write_cell(ws, row, col, value, wrap=True):
@@ -464,26 +464,26 @@ async def write_result(
         row = result["row"]
         n_beacons = 1 + len(result.get("extra_beacons", []))
 
-        # digitaldata → col D (rojo: no relevante, sin fill)
+        # digitaldata → col C (rojo: no relevante, sin fill)
         dd_val = result.get("digitaldata")
         if dd_val is not None:
-            _write_cell(ws, row, 4, _pretty_json(dd_val))
+            _write_cell(ws, row, 3, _pretty_json(dd_val))
             metrics["ok_dd"] += 1
         else:
-            _write_cell(ws, row, 4, _pretty_json({"error": "no digitaldata", "code": "DD_MISSING"}))
+            _write_cell(ws, row, 3, _pretty_json({"error": "no digitaldata", "code": "DD_MISSING"}))
 
-        # AA → col E (amarillo: media importancia, sin fill)
+        # AA → col D (amarillo: media importancia, sin fill)
         if result.get("aa_parsed"):
-            _write_cell(ws, row, 5, _pretty_json(result["aa_parsed"]))
+            _write_cell(ws, row, 4, _pretty_json(result["aa_parsed"]))
             metrics["ok_aa"] += 1
         else:
             err_code = _error_code_from_detail(result.get('error', 'no AA'))
-            _write_cell(ws, row, 5, _pretty_json({"error": result.get('error', 'no AA'), "code": err_code}))
+            _write_cell(ws, row, 4, _pretty_json({"error": result.get('error', 'no AA'), "code": err_code}))
 
         # Score por URL (0-100)
         url_score = compute_url_score(result)
 
-        # Metadata → col G
+        # Metadata → col F
         meta = {"score": url_score, "status": result["status"],
                 "aa_source": result["aa_source"],
                 "beacons": n_beacons, "title": result["title"],
@@ -492,7 +492,7 @@ async def write_result(
                 "url": result["url"][:120]}
         if result.get("extra_beacons"):
             meta["extra_beacons"] = result["extra_beacons"]
-        _write_cell(ws, row, 7, _pretty_json(meta))
+        _write_cell(ws, row, 6, _pretty_json(meta))
 
         if result.get("error") or not result["aa_parsed"]:
             metrics["errors"] += 1
@@ -634,7 +634,6 @@ def compute_url_score(result: dict) -> int:
 SHEET_HEADERS = [
     "nombre pagina auditada",
     "pagina auditada (URL)",
-    "digitaldata (manual)",
     "digitaldata (automatica)",
     "AA analytics (automatico)",
     "AA analytics (estructurado)",
@@ -646,22 +645,18 @@ CONTROL_HEADERS = [
     "Reintentos", "Score", "Tiempo (s)", "Workers",
 ]
 
-# Colores de columnas (A=azul claro estructura, C/F=verde, E=amarillo, D=rojo, G=sin color)
+# Colores de columnas (A/B=azul claro, C=rojo, D=amarillo, E=verde, F=sin color)
 HEADER_FILLS = {
     "A": PatternFill(start_color="D6E4F0", end_color="D6E4F0", fill_type="solid"),  # azul claro
     "B": PatternFill(start_color="D6E4F0", end_color="D6E4F0", fill_type="solid"),  # azul claro
-    "C": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # verde
-    "D": PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),  # rojo
-    "E": PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"),  # amarillo
-    "F": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # verde
+    "C": PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),  # rojo (DD auto)
+    "D": PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"),  # amarillo (AA auto)
+    "E": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # verde (AA estruct)
 }
-# G: sin color
 
 DATA_FILLS = {
-    "C": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # verde
-    "F": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # verde
+    "E": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # verde (AA estruct)
 }
-# D/E/G: sin fill en datos
 
 
 def _is_json_error(val: str) -> bool:
@@ -688,25 +683,20 @@ def apply_data_fills(ws):
     YELLOW = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
 
     for row in range(2, ws.max_row + 1):
-        # Col C — DD manual (verde si tiene datos reales)
-        c = ws.cell(row, 3).value
-        if c and isinstance(c, str) and _has_json_data(c):
-            ws.cell(row, 3).fill = DATA_FILLS["C"]
-
-        # Col D — DD automático (rojo si es error)
-        d = ws.cell(row, 4).value
+        # Col C — DD automático (rojo si es error)
+        d = ws.cell(row, 3).value
         if d and isinstance(d, str) and _is_json_error(d):
-            ws.cell(row, 4).fill = RED
+            ws.cell(row, 3).fill = RED
 
-        # Col E — AA auto (amarillo si tiene datos reales)
-        e = ws.cell(row, 5).value
+        # Col D — AA auto (amarillo si tiene datos reales)
+        e = ws.cell(row, 4).value
         if e and isinstance(e, str) and _has_json_data(e):
-            ws.cell(row, 5).fill = YELLOW
+            ws.cell(row, 4).fill = YELLOW
 
-        # Col F — AA estructurado (verde si tiene datos reales)
-        f = ws.cell(row, 6).value
+        # Col E — AA estructurado (verde si tiene datos reales)
+        f = ws.cell(row, 5).value
         if f and isinstance(f, str) and _has_json_data(f):
-            ws.cell(row, 6).fill = DATA_FILLS["F"]
+            ws.cell(row, 5).fill = DATA_FILLS["E"]
 
 
 def split_aa_workbooks(wb, audit_date: str, output_dir: str):
@@ -717,7 +707,7 @@ def split_aa_workbooks(wb, audit_date: str, output_dir: str):
     ws = wb[audit_date]
     con_rows, sin_rows = [], []
     for row in range(2, ws.max_row + 1):
-        aa = ws.cell(row, 5).value
+        aa = ws.cell(row, 4).value
         # Real AA data = JSON with "solution" key, no "error" key
         has_aa = False
         if aa and isinstance(aa, str):
@@ -741,7 +731,7 @@ def split_aa_workbooks(wb, audit_date: str, output_dir: str):
             col_idx = openpyxl.utils.column_index_from_string(col_letter)
             sws.cell(1, col_idx).fill = fill
         for row_num in rows:
-            for col in range(1, 8):
+            for col in range(1, 7):
                 src = ws.cell(row_num, col)
                 dst = sws.cell(row_num, col)
                 dst.value = src.value
@@ -983,16 +973,16 @@ async def amain():
         for row in range(2, max(sa.max_row or 2, sb.max_row or 2) + 1):
             url_a = sa.cell(row, 2).value or ""
             url_b = sb.cell(row, 2).value or ""
-            aa_a = (sa.cell(row, 5).value or "")[:50]
-            aa_b = (sb.cell(row, 5).value or "")[:50]
-            dd_a = (sa.cell(row, 4).value or "")[:50]
-            dd_b = (sb.cell(row, 4).value or "")[:50]
+            dd_a = (sa.cell(row, 3).value or "")[:50]
+            dd_b = (sb.cell(row, 3).value or "")[:50]
+            aa_a = (sa.cell(row, 4).value or "")[:50]
+            aa_b = (sb.cell(row, 4).value or "")[:50]
             if str(aa_a).strip() != str(aa_b).strip() or str(dd_a).strip() != str(dd_b).strip():
                 print(f"  Fila {row}: {url_a or url_b}")
                 if str(aa_a).strip() != str(aa_b).strip():
-                    print(f"    AA: {'ANTES' if not sa.cell(row,5).value else 'NUEVO'}")
+                    print(f"    AA: {'ANTES' if not sa.cell(row,4).value else 'NUEVO'}")
                 if str(dd_a).strip() != str(dd_b).strip():
-                    print(f"    DD: {'ANTES' if not sa.cell(row,4).value else 'NUEVO'}")
+                    print(f"    DD: {'ANTES' if not sa.cell(row,3).value else 'NUEVO'}")
         wb.close()
         return 0
 
@@ -1048,9 +1038,8 @@ async def amain():
         wb.close()
         sys.exit(1)
 
-    ws.cell(1, 3).value = ws.cell(1, 3).value or "digitaldata (manual)"
-    ws.cell(1, 4).value = ws.cell(1, 4).value or "digitaldata (automatica)"
-    ws.cell(1, 7).value = ws.cell(1, 7).value or "metadata / extra beacons"
+    ws.cell(1, 3).value = ws.cell(1, 3).value or "digitaldata (automatica)"
+    ws.cell(1, 6).value = ws.cell(1, 6).value or "metadata / extra beacons"
 
     rows_to_process = []
     for row in range(2, ws.max_row + 1):
@@ -1060,12 +1049,12 @@ async def amain():
         if args.row and row != args.row:
             continue
         if args.resume:
-            existing = ws.cell(row, 5).value
+            existing = ws.cell(row, 4).value
             if existing and len(str(existing).strip()) > 30 and "no AA" not in str(existing):
                 logging.info("Fila %d: saltando (resume)", row)
                 continue
         if args.retry_failed:
-            existing = ws.cell(row, 5).value
+            existing = ws.cell(row, 4).value
             if not existing or str(existing).strip().startswith("("):
                 logging.info("Fila %d: reintentar (error previo)", row)
             else:
@@ -1145,8 +1134,8 @@ async def amain():
                 logging.error("Fila %d: URL inválida (%s): %s", row, err, sanitize_url_for_log(url))
                 metrics["errors"] += 1
                 metrics["errores_detalle"].append({"row": row, "error": err})
-                _write_cell(ws, row, 5, _pretty_json({"error": f"URL inválida: {err}", "code": "URL_INVALID"}))
-                _write_cell(ws, row, 7, _pretty_json({"error": err, "url": url[:80], "code": "URL_INVALID"}))
+                _write_cell(ws, row, 4, _pretty_json({"error": f"URL inválida: {err}", "code": "URL_INVALID"}))
+                _write_cell(ws, row, 6, _pretty_json({"error": err, "url": url[:80], "code": "URL_INVALID"}))
             else:
                 valid_rows.append((row, url))
 
