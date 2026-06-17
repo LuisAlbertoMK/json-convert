@@ -493,13 +493,37 @@ def op_ver_resultados():
     open_file(targets[idx - 1])
 
 
-def op_todo_en_uno():
-    """Opcion 1: Pipeline completo."""
+def op_todo_en_uno(target_market=None):
+    """Opcion 1: Pipeline completo.
+    
+    Args:
+        target_market: None → preguntar (interactivo) o ALL (--run)
+                       "PR" → solo ese mercado
+                       ALL_MARKETS → todos
+    """
     separator("=", 55)
     c_print("bold", "  [!] PIPELINE COMPLETO")
     separator("=", 55)
     print()
     print("  Inicio: " + datetime.now().strftime('%H:%M:%S'))
+    print()
+
+    # Elegir mercado si no se especificó
+    if target_market is None:
+        market_choice, _ = choose_market(source="urls")
+        if market_choice is None:
+            print(_c("yellow", "  No hay mercados disponibles."))
+            return
+        target_market = market_choice
+
+    markets_to_run = []
+    if target_market == ALL_MARKETS:
+        markets_to_run = get_markets_from_urls()
+    else:
+        markets_to_run = [target_market]
+
+    market_label = "todos los mercados" if target_market == ALL_MARKETS else target_market
+    print(_c("dim", f"  Mercado(s): {market_label}"))
     print()
 
     results = []
@@ -528,24 +552,15 @@ def op_todo_en_uno():
     print()
     print(_c("cyan", "  [2/7] Auditoria (extract_browser)..."))
     if has_urls:
-        url_markets = get_markets_from_urls()
-        if url_markets:
-            audit_ok = True
-            for m in url_markets:
-                rc = run_step(
-                    [sys.executable, "extract_browser.py", "--urls", "urls.json",
-                     "--market", m, "--split-aa", "--progress"],
-                    "Auditando " + m + "...", timeout=600)
-                results.append(("Auditoria " + m, rc))
-                if rc != 0:
-                    audit_ok = False
-        else:
-            # Sin mercado detectado: ejecutar normal (raiz)
+        audit_ok = True
+        for m in markets_to_run:
             rc = run_step(
                 [sys.executable, "extract_browser.py", "--urls", "urls.json",
-                 "--split-aa", "--progress"],
-                "Ejecutando...", timeout=600)
-            results.append(("Auditoria", rc))
+                 "--market", m, "--split-aa", "--progress"],
+                "Auditando " + m + "...", timeout=600)
+            results.append(("Auditoria " + m, rc))
+            if rc != 0:
+                audit_ok = False
     else:
         rc = run_step([sys.executable, "extract_browser.py"],
                       "Ejecutando (modo Excel plano)...", timeout=600)
@@ -554,19 +569,15 @@ def op_todo_en_uno():
     # Paso 3: Post-procesar
     print()
     print(_c("cyan", "  [3/7] Post-procesando (extract_aa)..."))
-    markets = detect_markets()
+    all_markets = detect_markets()
+    # Filtrar solo los markets objetivo
+    post_markets = [(m, p) for m, p in all_markets if m in markets_to_run or target_market == ALL_MARKETS]
     processed_any = False
-    for m, hpath in markets:
-        rc = run_step([sys.executable, "extract_aa.py", "--input", hpath],
-                      "Procesando " + m + "...", timeout=120)
-        results.append(("Post-proceso " + m, rc))
+    for m, hpath in post_markets:
+        _run_extract_aa(hpath)
+        results.append(("Post-proceso " + m, 0))
         processed_any = True
-        base_dir = os.path.dirname(hpath)
-        for fname in ["con_aa.xlsx", "sin_aa.xlsx"]:
-            fp = os.path.join(base_dir, fname)
-            if os.path.exists(fp):
-                run_step([sys.executable, "extract_aa.py", "--input", fp],
-                         "Procesando " + m + "/" + fname + "...", timeout=120)
+        _run_extract_aa_companions(hpath)
 
     if not processed_any:
         print(_c("yellow", "    No hay archivos de auditoria para post-procesar."))
@@ -609,7 +620,7 @@ def op_todo_en_uno():
             results.append(("Catalogo migracion", -1))
 
     if os.path.exists(mapping_path) and os.path.exists(os.path.join(BASE_DIR, "expected.json")):
-        for m, hpath in detect_markets():
+        for m, hpath in post_markets:
             rc = run_step(
                 [sys.executable, "generate_migration_catalog.py",
                  "--historial", hpath,
@@ -619,15 +630,15 @@ def op_todo_en_uno():
                 "Catalogo " + m + "...", timeout=60)
             results.append(("Catalogo " + m, rc))
 
-    # Paso 6: Resultados
+    # Paso 7: Resultados
     print()
     print(_c("cyan", "  [7/7] Resultados..."))
     report_path = os.path.join(BASE_DIR, "reporte_auditoria.xlsx")
     if os.path.exists(report_path):
         if confirm("  Abrir el reporte?", default=True):
             open_file(report_path)
-    elif markets:
-        for m, hpath in markets:
+    elif post_markets:
+        for m, hpath in post_markets:
             if confirm("  Abrir " + m + "/historial.xlsx?", default=True):
                 open_file(hpath)
                 break
