@@ -20,6 +20,7 @@ Maneja 2 formatos detectados en col E:
 import json
 import logging
 import os
+import subprocess
 import sys
 
 import openpyxl
@@ -120,7 +121,9 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Extrae campos del JSON de Adobe Analytics en Excel")
+    parser.add_argument("--urls", help="urls.json para auto-generar input si no existe")
     parser.add_argument("--input", default="RevisionManual.xlsx", help="Archivo Excel")
+    parser.add_argument("--market", help="Mercado específico (para auto-generación)")
     parser.add_argument("--sheet", help="Nombre del sheet (default: auto-detecta el mas reciente)")
     parser.add_argument("--keep", default=",".join(DEFAULT_KEEP),
                         help=f"Campos a conservar (separados por coma). Opciones: {','.join(ALL_FIELDS)}. Usar 'all' para todo.")
@@ -143,6 +146,44 @@ def main():
         if unknown:
             logging.error("Campos desconocidos: %s. Opciones validas: %s o 'all'",
                           unknown, ",".join(ALL_FIELDS))
+            sys.exit(1)
+
+    # ── Auto-bootstrap desde urls.json si no existe el input ──
+    if not os.path.exists(args.input):
+        urls_path = args.urls
+        if not urls_path:
+            # Buscar urls.json en CWD o junto al script
+            for candidate in [os.path.join(os.getcwd(), "urls.json"),
+                              os.path.join(os.path.dirname(__file__), "urls.json")]:
+                if os.path.exists(candidate):
+                    urls_path = candidate
+                    break
+        if urls_path and os.path.exists(urls_path):
+            logging.warning("No se encuentra '%s'. Generando desde %s...",
+                            args.input, urls_path)
+            extract_browser = os.path.join(os.path.dirname(__file__), "extract_browser.py")
+            cmd = [sys.executable, extract_browser, "--urls", urls_path, "--split-aa"]
+            if args.market:
+                cmd.extend(["--market", args.market])
+            elif args.input != "RevisionManual.xlsx":
+                # Inferir mercado desde el path del input (ej: PR/historial.xlsx → PR)
+                input_dir = os.path.dirname(args.input)
+                if input_dir and input_dir not in (".", "") and input_dir.isalpha() and input_dir.isupper():
+                    cmd.extend(["--market", input_dir])
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                if r.returncode != 0:
+                    logging.error("extract_browser falló (exit %d): %s", r.returncode, r.stderr[:200])
+                    sys.exit(1)
+                logging.info("Historial generado correctamente.")
+            except subprocess.TimeoutExpired:
+                logging.error("extract_browser excedió el tiempo de espera (600s)")
+                sys.exit(1)
+            except FileNotFoundError:
+                logging.error("No se encuentra extract_browser.py junto a extract_aa.py")
+                sys.exit(1)
+        else:
+            logging.error("No se encuentra '%s'. Usá --urls <urls.json> para auto-generar.", args.input)
             sys.exit(1)
 
     wb = openpyxl.load_workbook(args.input)

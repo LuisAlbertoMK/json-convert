@@ -23,6 +23,7 @@ import argparse
 import io
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -387,6 +388,7 @@ Ejemplos:
     parser.add_argument("--dir", action="append", dest="dirs",
                         help="Directorio(s) de mercado (ej: PR, MX)")
     parser.add_argument("--input", help="Ruta directa a un historial.xlsx")
+    parser.add_argument("--urls", help="urls.json para auto-generar datos si no hay historiales")
     parser.add_argument("--output", default="reporte_auditoria.xlsx",
                         help="Archivo Excel de salida (default: reporte_auditoria.xlsx)")
     parser.add_argument("--verbose", action="store_true", help="Logging detallado")
@@ -409,10 +411,51 @@ Ejemplos:
         sources = find_historial_files(base, args.dirs)
 
     if not sources:
-        print("[!] No se encontraron archivos historial.xlsx en ningún directorio.")
-        print("    Ejecutá primero extract_browser.py para generar auditorías.")
-        print("    O usá --input para apuntar a un archivo específico.")
-        sys.exit(1)
+        # ── Auto-bootstrap desde urls.json ──
+        urls_path = args.urls
+        if not urls_path:
+            for candidate in [os.path.join(os.getcwd(), "urls.json"),
+                              os.path.join(os.path.dirname(__file__), "urls.json")]:
+                if os.path.exists(candidate):
+                    urls_path = candidate
+                    break
+
+        if urls_path and os.path.exists(urls_path):
+            print("[.] No hay historiales. Generando desde {}...".format(urls_path))
+            script_dir = os.path.dirname(__file__)
+
+            # 1. extract_browser
+            browser_script = os.path.join(script_dir, "extract_browser.py")
+            r1 = subprocess.run(
+                [sys.executable, browser_script, "--urls", urls_path, "--split-aa"],
+                capture_output=True, text=True, timeout=600,
+            )
+            if r1.returncode != 0:
+                print(f"[ERROR] extract_browser falló (exit {r1.returncode}): {r1.stderr[:200]}")
+                sys.exit(1)
+            print("  → Auditoría completada.")
+
+            # 2. extract_aa (post-procesar)
+            aa_script = os.path.join(script_dir, "extract_aa.py")
+            r2 = subprocess.run(
+                [sys.executable, aa_script, "--input", "historial.xlsx", "--urls", urls_path],
+                capture_output=True, text=True, timeout=120,
+            )
+            if r2.returncode != 0:
+                print(f"[WARN] extract_aa falló (exit {r2.returncode}): {r2.stderr[:200]}")
+            else:
+                print("  → Post-proceso completado.")
+
+            # Re-escanear fuentes
+            sources = find_historial_files(base, args.dirs)
+            if not sources:
+                print("[!] No se generaron archivos de auditoría.")
+                sys.exit(1)
+        else:
+            print("[!] No se encontraron archivos historial.xlsx en ningún directorio.")
+            print("    Usá --urls <urls.json> para auto-generar datos.")
+            print("    O ejecutá primero extract_browser.py para generar auditorías.")
+            sys.exit(1)
 
     # Extraer páginas
     all_pages = []

@@ -297,8 +297,15 @@ def op_postprocesar():
 
     market, hpath = choose_market(source="detect")
     if market is None:
-        print(_c("yellow", "  No se encontraron archivos de auditoria para procesar."))
-        print("  Ejecuta primero una auditoria (opcion 1 o 2).")
+        # Sin archivos → auto-bootstrap desde urls.json
+        print(_c("yellow", "  No se encontraron archivos de auditoria."))
+        urls_path = os.path.join(BASE_DIR, "urls.json")
+        if os.path.exists(urls_path) and confirm("  Generar desde urls.json automaticamente?"):
+            run_step([sys.executable, "extract_aa.py", "--input", "historial.xlsx",
+                      "--urls", urls_path],
+                     "Generando y procesando desde urls.json...", timeout=600)
+        else:
+            print(_c("yellow", "  Cancelado. Pasa --urls o ejecuta primero una auditoria."))
         return
 
     if market == ALL_MARKETS:
@@ -314,9 +321,9 @@ def op_postprocesar():
 
 
 def _run_extract_aa(hpath):
-    """Ejecuta extract_aa.py sobre un archivo historial."""
-    run_step([sys.executable, "extract_aa.py", "--input", hpath],
-             "Procesando: " + hpath, timeout=120)
+    """Ejecuta extract_aa.py sobre un archivo historial (auto-bootstrap si falta)."""
+    run_step([sys.executable, "extract_aa.py", "--input", hpath, "--urls", "urls.json"],
+             "Procesando: " + hpath, timeout=600)
 
 
 def _run_extract_aa_companions(hpath):
@@ -325,22 +332,19 @@ def _run_extract_aa_companions(hpath):
     for fname in ["con_aa.xlsx", "sin_aa.xlsx"]:
         fp = os.path.join(base_dir, fname)
         if os.path.exists(fp):
-            run_step([sys.executable, "extract_aa.py", "--input", fp],
-                     "Procesando: " + fp, timeout=120)
+            run_step([sys.executable, "extract_aa.py", "--input", fp, "--urls", "urls.json"],
+                     "Procesando: " + fp, timeout=600)
 
 
 def op_reporte():
     """Opcion 4: Generar reporte de fallos."""
     header("REPORTE DE FALLOS - audit_report.py")
 
-    markets = detect_markets()
-    if not markets:
-        print(_c("yellow", "  No se encontraron archivos de auditoria."))
-        print("  Ejecuta primero una auditoria (opcion 1 o 2).")
-        return
+    urls_path = os.path.join(BASE_DIR, "urls.json")
+    urls_arg = ["--urls", urls_path] if os.path.exists(urls_path) else []
 
-    code = run_step([sys.executable, "audit_report.py"],
-                    "Generando reporte (global + por mercado)...", timeout=60)
+    code = run_step([sys.executable, "audit_report.py"] + urls_arg,
+                    "Generando reporte (auto-bootstrap si es necesario)...", timeout=600)
 
     if code == 0:
         print(_c("green", "\n  [OK] Reporte global generado: reporte_auditoria.xlsx"))
