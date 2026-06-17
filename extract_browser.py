@@ -307,7 +307,8 @@ async def amain():
 
     # Mostrar conteo antes de empezar
     market_label = args.market.upper() if args.market else "TODOS"
-    print(f"\n  Auditando {len(urls)} URLs para mercado {market_label}...\n")
+    env_label = {"preview": "PREVIEW", "produccion": "PRODUCCION", "ambas": "TODOS"}.get(args.entorno, args.entorno)
+    print(f"\n  Auditando {len(urls)} URLs [{env_label}] para mercado {market_label}...\n")
 
     # Crear directorio de output si no existe (ej: PR/)
     output_dir = os.path.dirname(output_path)
@@ -375,6 +376,8 @@ def _build_parser():
     p.add_argument("--input", default=INPUT_FILE, help="Excel de entrada")
     p.add_argument("--output", help="Excel de salida")
     p.add_argument("--market", help="Filtrar por mercado en urls.json")
+    p.add_argument("--entorno", default="preview", choices=("preview", "produccion", "ambas"),
+                   help="Entorno a auditar: preview (default), produccion, o ambas")
     p.add_argument("--row", type=int, help="Fila inicial en Excel clasico")
     p.add_argument("--workers", type=int, default=3, help="Concurrencia")
     p.add_argument("--timeout", type=int, default=35, help="Timeout por URL (s)")
@@ -405,11 +408,20 @@ def _resolve_urls(args):
         with open(args.urls, encoding="utf-8") as f:
             all_entries = json.load(f)
         market = args.market
-        if market:
-            entries = [e for e in all_entries if e.get("market", "").upper() == market.upper()
-                       and e.get("entorno", "preview") == "preview"]
+        env = args.entorno or "preview"
+        if env == "ambas":
+            if market:
+                entries = [e for e in all_entries
+                           if e.get("market", "").upper() == market.upper()]
+            else:
+                entries = all_entries
         else:
-            entries = [e for e in all_entries if e.get("entorno", "preview") == "preview"]
+            if market:
+                entries = [e for e in all_entries
+                           if e.get("market", "").upper() == market.upper()
+                           and e.get("entorno", "preview") == env]
+            else:
+                entries = [e for e in all_entries if e.get("entorno", "preview") == env]
         urls = [(i + 2, e["url"]) for i, e in enumerate(entries)]
         source = args.market or "multi"
         return urls, source

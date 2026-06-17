@@ -155,21 +155,45 @@ def get_markets_from_urls() -> list[str]:
         return []
 
 
-def _count_urls(market: str = None) -> int:
-    """Cuenta URLs preview en urls.json (para un mercado o todas)."""
+def _count_urls(market: str = None, env: str = "preview") -> int:
+    """Cuenta URLs en urls.json (por mercado y entorno)."""
     urls_path = os.path.join(BASE_DIR, "urls.json")
     if not os.path.exists(urls_path):
         return 0
     try:
         with open(urls_path, encoding="utf-8") as f:
             entries = json.load(f)
+        if env == "ambas":
+            if market:
+                return sum(1 for e in entries
+                           if e.get("market", "").upper() == market.upper())
+            return len(entries)
         if market:
             return sum(1 for e in entries
                        if e.get("market", "").upper() == market.upper()
-                       and e.get("entorno") == "preview")
-        return sum(1 for e in entries if e.get("entorno") == "preview")
+                       and e.get("entorno", "preview") == env)
+        return sum(1 for e in entries if e.get("entorno", "preview") == env)
     except Exception:
         return 0
+
+
+def _choose_entorno(non_interactive: bool = False) -> str:
+    """Muestra submenu de entorno y retorna 'preview', 'produccion' o 'ambas'.
+    
+    Args:
+        non_interactive: si True, retorna 'ambas' sin preguntar.
+    """
+    if non_interactive:
+        return "ambas"
+    n_preview = _count_urls(env="preview")
+    n_prod = _count_urls(env="produccion")
+    n_ambas = _count_urls(env="ambas")
+    print(_c("cyan", "\n  Entorno a auditar:"))
+    print("    " + _c("bold", "1") + f". Preview  ({n_preview} URLs)")
+    print("    " + _c("bold", "2") + f". Produccion  ({n_prod} URLs)")
+    print("    " + _c("bold", "3") + f". Ambas  ({n_ambas} URLs)")
+    idx = ask_int("  Selecciona entorno [1-3]: ", 1, 3)
+    return {1: "preview", 2: "produccion", 3: "ambas"}[idx]
 
 
 def detect_markets():
@@ -276,7 +300,7 @@ def choose_market(source="detect"):
 #  OPCIONES DEL MENU
 # ============================================
 
-def op_auditar():
+def op_auditar(non_interactive=False):
     """Opcion 2: Solo auditoria (extract_browser) por mercado."""
     header("AUDITORIA - extract_browser.py")
 
@@ -289,6 +313,8 @@ def op_auditar():
             print(_c("yellow", "  Cancelado. Necesitas urls.json para auditar."))
             return
 
+    entorno = _choose_entorno(non_interactive)
+
     market, _ = choose_market(source="urls")
     if market is None:
         print(_c("yellow", "  No hay mercados en urls.json. Generalo primero."))
@@ -297,15 +323,15 @@ def op_auditar():
     if market == ALL_MARKETS:
         markets = get_markets_from_urls()
         for m in markets:
-            n = _count_urls(m)
+            n = _count_urls(m, entorno)
             cmd = [sys.executable, "extract_browser.py", "--urls", "urls.json",
-                   "--market", m, "--split-aa", "--progress"]
-            run_step(cmd, f"Auditando {m} ({n} URLs)...", timeout=600)
+                   "--market", m, "--entorno", entorno, "--split-aa", "--progress"]
+            run_step(cmd, f"Auditando {m} ({n} URLs [{entorno}])...", timeout=600)
     else:
-        n = _count_urls(market)
+        n = _count_urls(market, entorno)
         cmd = [sys.executable, "extract_browser.py", "--urls", "urls.json",
-               "--market", market, "--split-aa", "--progress"]
-        run_step(cmd, f"Auditando {market} ({n} URLs)...", timeout=600)
+               "--market", market, "--entorno", entorno, "--split-aa", "--progress"]
+        run_step(cmd, f"Auditando {market} ({n} URLs [{entorno}])...", timeout=600)
 
     print(_c("green", "\n  [OK] Auditoria finalizada."))
 
@@ -531,13 +557,14 @@ def op_ver_resultados():
     open_file(targets[idx - 1])
 
 
-def op_todo_en_uno(target_market=None):
+def op_todo_en_uno(target_market=None, non_interactive=False):
     """Opcion 1: Pipeline completo.
     
     Args:
         target_market: None → preguntar (interactivo) o ALL (--run)
                        "PR" → solo ese mercado
                        ALL_MARKETS → todos
+        non_interactive: si True, no hace preguntas al usuario.
     """
     separator("=", 55)
     c_print("bold", "  [!] PIPELINE COMPLETO")
@@ -560,8 +587,11 @@ def op_todo_en_uno(target_market=None):
     else:
         markets_to_run = [target_market]
 
+    # Elegir entorno
+    entorno = _choose_entorno(non_interactive)
+
     market_label = "todos los mercados" if target_market == ALL_MARKETS else target_market
-    print(_c("dim", f"  Mercado(s): {market_label}"))
+    print(_c("dim", f"  Mercado(s): {market_label}  |  Entorno: {entorno}"))
     print()
 
     results = []
@@ -623,11 +653,11 @@ def op_todo_en_uno(target_market=None):
         if has_urls:
             audit_ok = True
             for m in markets_to_run:
-                n = _count_urls(m)
+                n = _count_urls(m, entorno)
                 rc = run_step(
                     [sys.executable, "extract_browser.py", "--urls", "urls.json",
-                     "--market", m, "--split-aa", "--progress"],
-                    f"Auditando {m} ({n} URLs)...", timeout=600)
+                     "--market", m, "--entorno", entorno, "--split-aa", "--progress"],
+                    f"Auditando {m} ({n} URLs [{entorno}])...", timeout=600)
                 results.append(("Auditoria " + m, rc))
                 if rc != 0:
                     audit_ok = False
@@ -802,9 +832,10 @@ def run_option(opt, non_interactive=False):
     start = time.time()
 
     if opt == 1:
-        op_todo_en_uno(target_market=ALL_MARKETS if non_interactive else None)
+        op_todo_en_uno(target_market=ALL_MARKETS if non_interactive else None,
+                       non_interactive=non_interactive)
     elif opt == 2:
-        op_auditar()
+        op_auditar(non_interactive=non_interactive)
     elif opt == 3:
         op_postprocesar()
     elif opt == 4:
