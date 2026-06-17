@@ -283,7 +283,7 @@ def op_reporte():
         print("  Ejecuta primero una auditoria (opcion 1 o 2).")
         return
 
-    code = run_step([sys.executable, "audit_report.py", "--per-market"],
+    code = run_step([sys.executable, "audit_report.py"],
                     "Generando reporte (global + por mercado)...", timeout=60)
 
     if code == 0:
@@ -518,7 +518,7 @@ def op_todo_en_uno():
     # Paso 5: Reporte de fallos (global + por mercado)
     print()
     print(_c("cyan", "  [5/7] Generando reporte de fallos..."))
-    rc = run_step([sys.executable, "audit_report.py", "--per-market"],
+    rc = run_step([sys.executable, "audit_report.py"],
                   "audit_report.py", timeout=60)
     results.append(("Reporte de fallos", rc))
 

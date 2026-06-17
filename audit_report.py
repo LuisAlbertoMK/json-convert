@@ -377,12 +377,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Ejemplos:
-  python audit_report.py                               # auto-detecta mercados
-  python audit_report.py --dir PR                      # solo PR
-  python audit_report.py --dir PR --dir MX             # PR y MX
-  python audit_report.py --input PR/historial.xlsx     # archivo directo
-  python audit_report.py --output fallos.xlsx          # nombre custom
-  python audit_report.py --per-market                  # + reporte individual por carpeta
+  python audit_report.py                                # auto-detecta mercados
+  python audit_report.py --dir PR                       # solo PR
+  python audit_report.py --dir PR --dir MX              # PR y MX
+  python audit_report.py --input PR/historial.xlsx      # archivo directo
+  python audit_report.py --output fallos.xlsx           # nombre custom
         """,
     )
     parser.add_argument("--dir", action="append", dest="dirs",
@@ -390,8 +389,6 @@ Ejemplos:
     parser.add_argument("--input", help="Ruta directa a un historial.xlsx")
     parser.add_argument("--output", default="reporte_auditoria.xlsx",
                         help="Archivo Excel de salida (default: reporte_auditoria.xlsx)")
-    parser.add_argument("--per-market", action="store_true",
-                        help="Genera también reportes individuales en {market}/reporte-auditoria.xlsx")
     parser.add_argument("--verbose", action="store_true", help="Logging detallado")
 
     args = parser.parse_args()
@@ -438,9 +435,8 @@ Ejemplos:
     failed, all_sorted = build_report(all_pages)
     output_path = write_report(failed, all_sorted, args.output)
 
-    # Generar reportes por mercado
-    if args.per_market:
-        generate_per_market_reports(all_pages, base, args.verbose)
+    # Generar reportes por mercado (default: siempre)
+    generate_per_market_reports(all_pages, base, args.verbose)
 
     # Mostrar resumen
     total = len(all_pages)
@@ -450,10 +446,9 @@ Ejemplos:
 
     print(f"{'='*55}")
     print(f"  REPORTE GLOBAL:   {output_path}")
-    if args.per_market:
-        markets = sorted(set(p.get("mercado", "ROOT") for p in all_pages if p.get("mercado") != "ROOT"))
-        for m in markets:
-            print(f"  {m}/reporte-auditoria.xlsx")
+    markets = sorted(set(p.get("mercado", "ROOT") for p in all_pages if p.get("mercado") != "ROOT"))
+    for m in markets:
+        print(f"  {m}/reporte-auditoria.xlsx")
     print(f"{'='*55}")
     print(f"  Total URLs:       {total}")
     print(f"  Funcionando (OK): {ok_count}")
