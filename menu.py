@@ -103,13 +103,18 @@ def run_step(cmd, label, cwd=None, timeout=None):
     print("\n  -> " + _c("cyan", label))
     separator("-", 40)
     try:
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
         proc = subprocess.Popen(
             cmd,
             cwd=cwd or BASE_DIR,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
+            env=env,
         )
         for line in iter(proc.stdout.readline, ""):
             print("    " + line, end="")
