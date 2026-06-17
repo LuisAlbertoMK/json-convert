@@ -210,10 +210,52 @@ def get_project_status():
 
 
 # ============================================
+#  HELPERS DE MERCADO
+# ============================================
+
+ALL_MARKETS = "__ALL__"  # sentinel para "todos los mercados"
+
+
+def choose_market(source="detect"):
+    """Muestra submenu de mercados y retorna (nombre|ALL_MARKETS, archivo|None).
+    
+    Args:
+        source: "detect" → detect_markets() (busca archivos Excel)
+                "urls" → get_markets_from_urls() (desde urls.json)
+    
+    Returns:
+        (market_name, filepath) o (ALL_MARKETS, None) para "todos"
+    """
+    if source == "urls":
+        markets = get_markets_from_urls()
+        items = [(m, None) for m in markets]
+    else:
+        items = detect_markets()  # [(name, path), ...]
+
+    if not items:
+        return None, None
+
+    if len(items) == 1:
+        return items[0]  # único mercado → sin preguntar
+
+    print(_c("cyan", "\n  Mercados disponibles:"))
+    print("    " + _c("bold", "0") + ". Todos los mercados")
+    for i, item in enumerate(items, 1):
+        name = item[0]
+        extra = f" ({os.path.relpath(item[1], BASE_DIR)})" if len(item) > 1 and item[1] else ""
+        print(f"    {i}. {name}{extra}")
+
+    idx = ask_int("  Selecciona mercado [0-" + str(len(items)) + "]: ", 0, len(items))
+    if idx == 0:
+        return (ALL_MARKETS, None)
+    return items[idx - 1]
+
+
+# ============================================
 #  OPCIONES DEL MENU
 # ============================================
 
-def op_auditar(market=None):
+def op_auditar():
     """Opcion 2: Solo auditoria (extract_browser) por mercado."""
     header("AUDITORIA - extract_browser.py")
 
@@ -226,24 +268,22 @@ def op_auditar(market=None):
             print(_c("yellow", "  Cancelado. Necesitas urls.json para auditar."))
             return
 
-    if market:
-        # Mercado específico
+    market, _ = choose_market(source="urls")
+    if market is None:
+        print(_c("yellow", "  No hay mercados en urls.json. Generalo primero."))
+        return
+
+    if market == ALL_MARKETS:
+        markets = get_markets_from_urls()
+        for m in markets:
+            cmd = [sys.executable, "extract_browser.py", "--urls", "urls.json",
+                   "--market", m, "--split-aa", "--progress"]
+            run_step(cmd, "Auditando " + m + "...", timeout=600)
+    else:
         cmd = [sys.executable, "extract_browser.py", "--urls", "urls.json",
                "--market", market, "--split-aa", "--progress"]
         run_step(cmd, "Auditando " + market + "...", timeout=600)
-    else:
-        # Todos los mercados detectados en urls.json
-        markets = get_markets_from_urls()
-        if markets:
-            for m in markets:
-                cmd = [sys.executable, "extract_browser.py", "--urls", "urls.json",
-                       "--market", m, "--split-aa", "--progress"]
-                run_step(cmd, "Auditando " + m + "...", timeout=600)
-        else:
-            # Sin mercado: ejecutar normal
-            cmd = [sys.executable, "extract_browser.py", "--urls", "urls.json",
-                   "--split-aa", "--progress"]
-            run_step(cmd, "Ejecutando auditoria...", timeout=600)
+
     print(_c("green", "\n  [OK] Auditoria finalizada."))
 
 
@@ -251,26 +291,38 @@ def op_postprocesar():
     """Opcion 3: Solo post-procesar (extract_aa)."""
     header("POST-PROCESO - extract_aa.py")
 
-    markets = detect_markets()
-    if not markets:
+    market, hpath = choose_market(source="detect")
+    if market is None:
         print(_c("yellow", "  No se encontraron archivos de auditoria para procesar."))
         print("  Ejecuta primero una auditoria (opcion 1 o 2).")
         return
 
-    targets = []
-    for m, hpath in markets:
-        targets.append(hpath)
-        base_dir = os.path.dirname(hpath)
-        for fname in ["con_aa.xlsx", "sin_aa.xlsx"]:
-            fp = os.path.join(base_dir, fname)
-            if os.path.exists(fp):
-                targets.append(fp)
-
-    for t in targets:
-        run_step([sys.executable, "extract_aa.py", "--input", t],
-                 "Procesando: " + t, timeout=120)
+    if market == ALL_MARKETS:
+        markets = detect_markets()
+        for m, hpath in markets:
+            _run_extract_aa(hpath)
+            _run_extract_aa_companions(hpath)
+    else:
+        _run_extract_aa(hpath)
+        _run_extract_aa_companions(hpath)
 
     print(_c("green", "\n  [OK] Post-proceso finalizado."))
+
+
+def _run_extract_aa(hpath):
+    """Ejecuta extract_aa.py sobre un archivo historial."""
+    run_step([sys.executable, "extract_aa.py", "--input", hpath],
+             "Procesando: " + hpath, timeout=120)
+
+
+def _run_extract_aa_companions(hpath):
+    """Ejecuta extract_aa.py sobre con_aa.xlsx y sin_aa.xlsx del mismo dir."""
+    base_dir = os.path.dirname(hpath)
+    for fname in ["con_aa.xlsx", "sin_aa.xlsx"]:
+        fp = os.path.join(base_dir, fname)
+        if os.path.exists(fp):
+            run_step([sys.executable, "extract_aa.py", "--input", fp],
+                     "Procesando: " + fp, timeout=120)
 
 
 def op_reporte():
@@ -385,8 +437,20 @@ def op_limpieza():
 def op_prune():
     """Opcion 8: Limpiar columnas muertas de Excel."""
     header("LIMPIAR COLUMNAS - prune_excel_columns.py")
-    code = run_step([sys.executable, "prune_excel_columns.py"],
-                    "Eliminando columnas inutiles...", timeout=30)
+
+    market, _ = choose_market(source="detect")
+    if market is None:
+        print(_c("yellow", "  No se encontraron archivos Excel."))
+        return
+
+    if market == ALL_MARKETS:
+        cmd = [sys.executable, "prune_excel_columns.py"]
+        label = "Todos los mercados"
+    else:
+        cmd = [sys.executable, "prune_excel_columns.py", "--dir", market]
+        label = "Mercado: " + market
+
+    code = run_step(cmd, label, timeout=30)
     if code == 0:
         print(_c("green", "\n  [OK] Columnas limpiadas."))
     else:
