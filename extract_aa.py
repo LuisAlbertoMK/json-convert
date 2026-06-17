@@ -159,8 +159,22 @@ def main():
                     urls_path = candidate
                     break
         if urls_path and os.path.exists(urls_path):
-            logging.warning("No se encuentra '%s'. Generando desde %s...",
-                            args.input, urls_path)
+            # Estimar cantidad de URLs
+            _n_urls = 0
+            try:
+                with open(urls_path) as _f:
+                    _all_urls = json.load(_f)
+                if args.market:
+                    _n_urls = len([e for e in _all_urls
+                                   if e.get("market", "").upper() == args.market.upper()
+                                   and e.get("entorno", "preview") == "preview"])
+                else:
+                    _n_urls = len([e for e in _all_urls if e.get("entorno", "preview") == "preview"])
+            except Exception:
+                pass
+            urls_label = f" ({_n_urls} URLs)" if _n_urls else ""
+            logging.warning("No se encuentra '%s'. Generando%s desde %s...",
+                            args.input, urls_label, urls_path)
             extract_browser = os.path.join(os.path.dirname(__file__), "extract_browser.py")
             cmd = [sys.executable, extract_browser, "--urls", urls_path, "--split-aa"]
             if args.market:

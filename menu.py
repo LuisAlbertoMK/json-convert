@@ -155,6 +155,23 @@ def get_markets_from_urls() -> list[str]:
         return []
 
 
+def _count_urls(market: str = None) -> int:
+    """Cuenta URLs preview en urls.json (para un mercado o todas)."""
+    urls_path = os.path.join(BASE_DIR, "urls.json")
+    if not os.path.exists(urls_path):
+        return 0
+    try:
+        with open(urls_path, encoding="utf-8") as f:
+            entries = json.load(f)
+        if market:
+            return sum(1 for e in entries
+                       if e.get("market", "").upper() == market.upper()
+                       and e.get("entorno") == "preview")
+        return sum(1 for e in entries if e.get("entorno") == "preview")
+    except Exception:
+        return 0
+
+
 def detect_markets():
     """Detecta directorios de mercado con archivos de auditoria.
 
@@ -280,13 +297,15 @@ def op_auditar():
     if market == ALL_MARKETS:
         markets = get_markets_from_urls()
         for m in markets:
+            n = _count_urls(m)
             cmd = [sys.executable, "extract_browser.py", "--urls", "urls.json",
                    "--market", m, "--split-aa", "--progress"]
-            run_step(cmd, "Auditando " + m + "...", timeout=600)
+            run_step(cmd, f"Auditando {m} ({n} URLs)...", timeout=600)
     else:
+        n = _count_urls(market)
         cmd = [sys.executable, "extract_browser.py", "--urls", "urls.json",
                "--market", market, "--split-aa", "--progress"]
-        run_step(cmd, "Auditando " + market + "...", timeout=600)
+        run_step(cmd, f"Auditando {market} ({n} URLs)...", timeout=600)
 
     print(_c("green", "\n  [OK] Auditoria finalizada."))
 
@@ -590,10 +609,11 @@ def op_todo_en_uno(target_market=None):
     if has_urls:
         audit_ok = True
         for m in markets_to_run:
+            n = _count_urls(m)
             rc = run_step(
                 [sys.executable, "extract_browser.py", "--urls", "urls.json",
                  "--market", m, "--split-aa", "--progress"],
-                "Auditando " + m + "...", timeout=600)
+                f"Auditando {m} ({n} URLs)...", timeout=600)
             results.append(("Auditoria " + m, rc))
             if rc != 0:
                 audit_ok = False

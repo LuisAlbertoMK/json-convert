@@ -291,7 +291,16 @@ async def amain():
 
     # ── Fuente de URLs ──
     urls, url_source = _resolve_urls(args)
-    output_path = args.output or _resolve_output(url_source)
+    output_path = args.output or _resolve_output(url_source, args.market)
+
+    # Mostrar conteo antes de empezar
+    market_label = args.market.upper() if args.market else "TODOS"
+    print(f"\n  Auditando {len(urls)} URLs para mercado {market_label}...\n")
+
+    # Crear directorio de output si no existe (ej: PR/)
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
     # ── Excel (crear ANTES del pipeline) ──
     wb, ws, audit_date, _ = setup_multisheet(output_path, url_source, resume=False)
@@ -413,10 +422,12 @@ def _resolve_urls(args):
     return urls, source
 
 
-def _resolve_output(url_source: str) -> str:
+def _resolve_output(url_source: str, market: str = None) -> str:
     """Determina nombre de output segun fuente."""
     if url_source == "clasico":
         return "resultado.xlsx"
+    if market:
+        return os.path.join(market.upper(), "historial.xlsx")
     return "historial.xlsx"
 
 

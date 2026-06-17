@@ -421,7 +421,16 @@ Ejemplos:
                     break
 
         if urls_path and os.path.exists(urls_path):
-            print("[.] No hay historiales. Generando desde {}...".format(urls_path))
+            # Estimar cantidad de URLs
+            _n_urls = 0
+            try:
+                with open(urls_path) as _f:
+                    _all_urls = json.load(_f)
+                _n_urls = len([e for e in _all_urls if e.get("entorno", "preview") == "preview"])
+            except Exception:
+                pass
+            urls_label = f" ({_n_urls} URLs)" if _n_urls else ""
+            print(f"[.] No hay historiales. Generando{urls_label} desde {urls_path}...")
             script_dir = os.path.dirname(__file__)
 
             # 1. extract_browser
