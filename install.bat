@@ -5,6 +5,10 @@ REM
 REM Uso:
 REM   install.bat                         # instalación normal
 REM   install.bat --proxy http://proxy:8080  # detrás de proxy corporativo
+REM
+REM Requisitos:
+REM   - Python 3.11+  (verificar con: python --version)
+REM   - Google Chrome (recomendado para URLs de produccion)
 
 setlocal enabledelayedexpansion
 
@@ -31,13 +35,13 @@ if %errorlevel% neq 0 (
     echo.
     echo Solucion: Instala Python desde https://www.python.org/downloads/
     echo Marca "Add Python to PATH" durante la instalacion.
-    echo Version requerida: 3.9 o superior.
+    echo Version requerida: 3.11 o superior.
     echo.
     pause
     exit /b 1
 )
 
-REM Check version >= 3.9
+REM Check version >= 3.11
 for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PY_VER=%%i
 for /f "tokens=1,2 delims=." %%a in ("%PY_VER%") do (
     set PY_MAJOR=%%a
@@ -49,8 +53,8 @@ if %PY_MAJOR% lss 3 (
     pause
     exit /b 1
 )
-if %PY_MAJOR%==3 if %PY_MINOR% lss 9 (
-    echo [ERROR] Python 3.9+ requerido. Version encontrada: %PY_VER%
+if %PY_MAJOR%==3 if %PY_MINOR% lss 11 (
+    echo [ERROR] Python 3.11+ requerido. Version encontrada: %PY_VER%
     pause
     exit /b 1
 )
@@ -58,7 +62,7 @@ if %PY_MAJOR%==3 if %PY_MINOR% lss 9 (
 echo    Python %PY_VER% OK
 
 echo.
-echo 2. Instalando openpyxl + playwright (%SOURCE%)...
+echo 2. Instalando openpyxl + playwright...
 
 set PIP_ARGS=--user --quiet --no-warn-script-location
 if not "%PROXY%"=="" (
@@ -105,12 +109,28 @@ if %errorlevel% neq 0 (
 echo    Chromium OK
 
 echo.
+echo 4. Verificando Google Chrome (recomendado)...
+where chrome.exe >nul 2>&1
+if %errorlevel% equ 0 (
+    echo    Chrome OK
+) else (
+    echo    [AVISO] No se encontro Google Chrome.
+    echo.
+    echo    Las URLs de PRODUCCION requieren Chrome real para
+    echo    evitar el bloqueo de Akamai WAF. Sin Chrome solo
+    echo    se podran auditar URLs de PREVIEW.
+    echo.
+    echo    Descarga: https://www.google.com/chrome/
+)
+
+echo.
 echo ========================================
 echo Instalacion completa.
 echo ========================================
 echo.
 echo Ya podes ejecutar:
-echo   python extract_browser.py
+echo   python menu.py                  # menu interactivo
+echo   python extract_browser.py --urls urls.json
 echo   python extract_aa.py
 echo.
 pause

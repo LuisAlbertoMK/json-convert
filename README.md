@@ -72,62 +72,6 @@ python extract_aa.py --input PR/historial.xlsx
 python extract_aa.py --input PR/con_aa.xlsx
 ```
 
-### All flags
-
-| Flag | Script | Description |
-|------|--------|-------------|
-| `--urls <file>` | extract_browser | Input JSON → multi-sheet historial |
-| `--market <name>` | extract_browser | Filter by market field (e.g. PR, MX). Output in `<NAME>/` dir |
-| `--split-aa` | extract_browser | Create con_aa.xlsx + sin_aa.xlsx alongside historial |
-| `--wait-after <sec>` | extract_browser | Seconds to wait after page load (default: 4) |
-| `--workers <n>` | extract_browser | Concurrent URLs (default: 1) |
-| `--retry <n>` | extract_browser | Retries per URL (default: 1) |
-| `--timeout <ms>` | extract_browser | Page load timeout (default: 35000) |
-| `--headed` | extract_browser | Show browser window |
-| `--proxy <url>` | extract_browser | HTTP proxy |
-| `--resume` | extract_browser | Skip rows with existing data |
-| `--retry-failed` | extract_browser | Only process previously failed URLs |
-| `--verbose` | both | Debug logging |
-| `--backup` | extract_browser | Backup Excel before overwriting |
-| `--progress` | extract_browser | Show progress bar |
-| `--diff` | extract_browser | Compare last 2 audits |
-| `--diagnostic` | extract_browser | Check environment without browsing |
-| `--config <file>` | extract_browser | JSON config file (default: audit.json) |
-| `--keep <fields>` | extract_aa | Filter AA fields to extract |
-| `--score` | extract_aa | Per-row AA extraction metrics |
-| `--sheet` | extract_aa | Select specific sheet |
-
-### Configuration via `audit.json`
-
-Flags can be persisted in `audit.json` (auto-loaded):
-
-```json
-{
-  "workers": 3,
-  "retry": 2,
-  "timeout": 35000,
-  "wait_after": 4,
-  "progress": true,
-  "headed": false,
-  "verbose": false
-}
-```
-
-CLI flags override config values when set.
-
-## urls.json format
-
-```json
-[
-  {"url": "https://...", "nombre": "Page Name", "market": "PR"},
-  {"url": "https://...", "nombre": "Another Page", "market": "MX"}
-]
-```
-
-- `url` (required): full URL to audit
-- `nombre` (optional): display name, falls back to URL
-- `market` (optional): used with `--market` flag for segmentation
-
 ## Excel structure
 
 | Col | Header | Color (header) | Color (data) | Description |
@@ -142,9 +86,116 @@ CLI flags override config values when set.
 
 ## Requirements
 
-- Python 3.9+
-- Windows (Playwright Chromium, ~180 MB download on first install)
-- Corporate VPN for Ford preview URLs
+- **Python 3.11+**
+- **Windows** (Playwright, ~180 MB download on first install)
+- **Google Chrome** (recommended) — needed to bypass Akamai WAF on produccion URLs.
+  Falls back to bundled Chromium if Chrome is not installed (preview URLs only).
+- **Corporate VPN** for Ford preview URLs (produccion URLs don't need VPN)
+
+## Setup
+
+```bash
+# 1. Install Python packages + Playwright Chromium
+install.bat
+
+# Or manually:
+pip install --user openpyxl playwright
+python -m playwright install chromium
+
+# 2. (Recommended) Install Google Chrome from https://www.google.com/chrome/
+#    Required for produccion URLs — bundled Chromium is blocked by Akamai WAF.
+```
+
+## Menu (recommended workflow)
+
+```bash
+python menu.py
+```
+
+Interactive menu with pipeline, audit, post-process, report, and more.
+
+Non-interactive mode (CI / automation):
+```bash
+python menu.py --run auto
+```
+
+## Pipeline (step‑by‑step)
+
+The main pipeline (`python menu.py`, option 1):
+
+1. Run tests
+2. Generate `urls.json` (if missing, from `RevisionManual.xlsx`)
+3. Choose environment: **Preview** / **Produccion** / **Ambas**
+4. Audit URLs (via Playwright)
+5. Post-process AA data
+6. Generate report
+7. Clean up
+
+### Environment selection
+
+| Entorno | URLs | VPN needed | Akamai block |
+|---------|------|------------|--------------|
+| Preview | 14 URLs | Sí | No |
+| Produccion | 314 URLs | No | Sí (bypassed with real Chrome) |
+| Ambas | all 328 | Partial | Mixed |
+
+Recent fix: `channel="chrome"` bypasses Akamai WAF detection. The bundled Playwright
+Chromium uses a different TLS fingerprint that Akamai flags as a bot. Real Chrome
+passes the check.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `menu.py` | Interactive menu (pipeline, audit, post-process, report) |
+| `extract_browser.py` | Navigate URLs, capture AA beacons + digitalData, write Excel |
+| `extract_aa.py` | Post-process: filter JSON fields from col E → col F |
+| `_gen_urls.py` | Extract URLs from Excel → `urls.json` |
+
+## Flags
+
+### `extract_browser.py`
+
+| Flag | Description |
+|------|-------------|
+| `--urls <file>` | Input JSON → multi-sheet historial |
+| `--market <name>` | Filter by market (e.g. PR, MX). Output in `<NAME>/` dir |
+| `--entorno <env>` | Environment: `preview` (default), `produccion`, or `ambas` |
+| `--split-aa` | Create con_aa.xlsx + sin_aa.xlsx alongside historial |
+| `--wait-after <sec>` | Seconds to wait after page load (default: 4) |
+| `--workers <n>` | Concurrent URLs (default: 3) |
+| `--timeout <sec>` | Page load timeout in seconds (default: 35) |
+| `--headed` | Show browser window |
+| `--proxy <url>` | HTTP proxy |
+| `--progress` | Show progress bar |
+| `--verbose` | Debug logging |
+| `--resume` | Skip rows with existing data |
+
+### `extract_aa.py`
+
+| Flag | Description |
+|------|-------------|
+| `--urls <file>` | Input JSON for market/entorno resolution |
+| `--market <name>` | Filter by market |
+| `--input <file>` | Input Excel file |
+| `--output <file>` | Output Excel file |
+| `--keep <fields>` | Filter AA fields to extract |
+| `--score` | Per-row AA extraction metrics |
+| `--sheet` | Select specific sheet |
+
+## urls.json format
+
+```json
+[
+  {"url": "https://...", "nombre": "Page Name", "market": "PR", "entorno": "preview"},
+  {"url": "https://...", "nombre": "Another Page", "market": "MX", "entorno": "produccion"}
+]
+```
+
+- `url` (required): full URL to audit
+- `nombre` (optional): display name, falls back to URL
+- `market` (required for segmentation): market code (PR, MX, etc.)
+- `entorno` (optional): `"preview"` (default) or `"produccion"`
 
 ## Project status
 
