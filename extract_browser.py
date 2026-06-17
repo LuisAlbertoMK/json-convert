@@ -113,12 +113,12 @@ async def write_result(
         url_score = compute_url_score(result)
 
         # Metadata → col F
-        meta = {"score": url_score, "status": result["status"],
-                "aa_source": result["aa_source"],
-                "beacons": n_beacons, "title": result["title"],
+        meta = {"score": url_score, "status": result.get("status", 0),
+                "aa_source": result.get("aa_source"),
+                "beacons": n_beacons, "title": result.get("title", ""),
                 "error": result.get("error"), "code": result.get("code"),
-                "elapsed_s": result["elapsed_s"],
-                "url": result["url"][:120]}
+                "elapsed_s": result.get("elapsed_s", 0),
+                "url": result.get("url", "")[:120]}
         if result.get("extra_beacons"):
             meta["extra_beacons"] = result["extra_beacons"]
         _write_cell(ws, row, 6, _pretty_json(meta))
@@ -269,6 +269,11 @@ async def process_url(
             "beacon_count": len(all_beacons),
         },
         "elapsed_s": round(elapsed, 1),
+        "status": 0,  # página cargada, código HTTP no disponible con domcontentloaded
+        "aa_source": None,  # se actualiza en write_result si hay AA
+        "title": last_title,
+        "code": None,
+        "retries_used": attempt,
     }
     if navigation_error:
         result["error"] = navigation_error
@@ -510,7 +515,10 @@ async def _run_pipeline(context, urls, args, ws, output_path):
         except Exception as e:
             # Si process_url no pudo manejar el error, registrar como fallo
             logging.error("[%s] Fallo grave: %s", url[:60], e)
-            result = {"url": url, "row": row, "error": str(e), "aa_parsed": None, "digitaldata": None}
+            result = {"url": url, "row": row, "error": str(e),
+                      "aa_parsed": None, "digitaldata": None,
+                      "status": -1, "aa_source": None, "title": "",
+                      "code": "FATAL", "elapsed_s": 0, "retries_used": 0}
             metrics["errors"] += 1
         results.append(result)
 
