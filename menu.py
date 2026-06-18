@@ -27,6 +27,17 @@ if sys.stdout.encoding and sys.stdout.encoding.upper() != "UTF-8":
     except Exception:
         pass
 
+# ── Browser engine — control via EXTRACT_BROWSER env var ──
+_EXTRACT_BROWSER = os.environ.get("EXTRACT_BROWSER", "").strip().lower()
+"""Si EXTRACT_BROWSER=firefox, pasa --browser firefox a extract_browser.py."""
+
+
+def _browser_args() -> list[str]:
+    """Devuelve ['--browser', 'firefox'] si la env var lo pide, sino []."""
+    if _EXTRACT_BROWSER == "firefox":
+        return ["--browser", "firefox"]
+    return []
+
 
 # -- Detect terminal color support --
 _HAS_ANSI = (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()) or bool(os.environ.get("TERM"))
@@ -334,13 +345,15 @@ def op_auditar(non_interactive: bool = False) -> None:
         markets = get_markets_from_urls()
         for m in markets:
             n = _count_urls(m, entorno)
-            cmd = [sys.executable, "extract_browser.py", "--urls", "urls.json",
-                   "--market", m, "--entorno", entorno, "--split-aa", "--progress"]
+            cmd = ([sys.executable, "extract_browser.py", "--urls", "urls.json",
+                    "--market", m, "--entorno", entorno, "--split-aa", "--progress"]
+                   + _browser_args())
             run_step(cmd, f"Auditando {m} ({n} URLs [{entorno}])...", timeout=600)
     else:
         n = _count_urls(market, entorno)
-        cmd = [sys.executable, "extract_browser.py", "--urls", "urls.json",
-               "--market", market, "--entorno", entorno, "--split-aa", "--progress"]
+        cmd = ([sys.executable, "extract_browser.py", "--urls", "urls.json",
+                "--market", market, "--entorno", entorno, "--split-aa", "--progress"]
+               + _browser_args())
         run_step(cmd, f"Auditando {market} ({n} URLs [{entorno}])...", timeout=600)
 
     print(_c("green", "\n  [OK] Auditoria finalizada."))
@@ -669,13 +682,14 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
                 n = _count_urls(m, entorno)
                 rc = run_step(
                     [sys.executable, "extract_browser.py", "--urls", "urls.json",
-                     "--market", m, "--entorno", entorno, "--split-aa", "--progress"],
+                     "--market", m, "--entorno", entorno, "--split-aa", "--progress"]
+                    + _browser_args(),
                     f"Auditando {m} ({n} URLs [{entorno}])...", timeout=600)
                 results.append(("Auditoria " + m, rc))
                 if rc != 0:
                     audit_ok = False
         else:
-            rc = run_step([sys.executable, "extract_browser.py"],
+            rc = run_step([sys.executable, "extract_browser.py"] + _browser_args(),
                           "Ejecutando (modo Excel plano)...", timeout=600)
             results.append(("Auditoria", rc))
             audit_ok = (rc == 0)
