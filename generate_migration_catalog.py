@@ -95,9 +95,11 @@ def find_digitaldata_in_historial(historial_path: str, preview_url: str) -> dict
     wb = openpyxl.load_workbook(historial_path, data_only=True)
     data_sheet = None
     for sn in wb.sheetnames:
-        if sn not in ("_control", "_vars"):
+        if sn not in ("_control", "_vars", "Sheet"):
             data_sheet = wb[sn]
             break
+    if not data_sheet and "Sheet" in wb.sheetnames:
+        data_sheet = wb["Sheet"]
     if not data_sheet:
         wb.close()
         return {}
@@ -336,8 +338,10 @@ def generate_catalog(historial_path: str, mapping_path: str,
             print(f"  [!] Saltando URL sin page_key: {preview_url}")
             continue
 
-        # Obtener digitalData real
+        # Obtener digitalData real — probar preview_url primero, luego production_url
         dd = find_digitaldata_in_historial(historial_path, preview_url)
+        if not dd and production_url and production_url != preview_url:
+            dd = find_digitaldata_in_historial(historial_path, production_url)
         actual_page = dd.get("page", {}) if dd else {}
 
         if dd:

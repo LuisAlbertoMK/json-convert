@@ -1,17 +1,17 @@
 [
   {
     "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/donativos-ambientales.html",
-    "production_url": "https://www.ford.com.pr/esp/sostenibilidad/",
+    "production_url": "https://www.ford.com.pr/esp/donativos-ambientales/",
     "aem_path": "/content/ford/pr/es_pr/sustainability/environment",
     "page_key": "sustainability",
-    "nombre": "Puerto Rico Español"
+    "nombre": "Puerto Rico EspaÃƒÆ’Ã‚Â±ol"
   },
   {
     "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/environmental-grants.html",
-    "production_url": "https://www.ford.com.pr/en/sustainability/",
+    "production_url": "https://www.ford.com.pr/en/environmental-grants/",
     "aem_path": "/content/ford/pr/en_pr/sustainability/environment",
     "page_key": "sustainability",
-    "nombre": "Puerto Rico Inglés"
+    "nombre": "Puerto Rico InglÃƒÆ’Ã‚Â©s"
   },
   {
     "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/duenos/tips.html",
@@ -46,7 +46,7 @@
     "production_url": "https://www.ford.com.pr/en/owners/",
     "aem_path": "/content/ford/pr/en_pr/owners",
     "page_key": "owners",
-    "nombre": "Puerto Rico (Inglés):"
+    "nombre": "Puerto Rico (InglÃƒÆ’Ã‚Â©s):"
   },
   {
     "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/owners/tips/driving-precautions.html",
@@ -78,7 +78,7 @@
   },
   {
     "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/legal/privacy-policy.html",
-    "production_url": "https://www.ford.com.pr/esp/legal/privacy/",
+    "production_url": "https://www.ford.com.pr/esp/legal/privacy-policy/",
     "aem_path": "/content/ford/pr/es_pr/legal/privacy",
     "page_key": "legal",
     "nombre": "Privacy Policy"
@@ -92,7 +92,7 @@
   },
   {
     "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/legal/privacy-policy.html",
-    "production_url": "https://www.ford.com.pr/en/legal/privacy/",
+    "production_url": "https://www.ford.com.pr/en/legal/privacy-policy/",
     "aem_path": "/content/ford/pr/en_pr/legal/privacy",
     "page_key": "legal",
     "nombre": "Privacy Policy"
