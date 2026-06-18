@@ -48,6 +48,12 @@ from json_convert.metrics import (
     compute_url_score,
 )
 
+from json_convert.pipeline import (
+    route_beacons,
+    write_result,
+    run_pipeline,
+)
+
 __all__ = [
     "VALID_URL_SCHEMES", "ALLOWED_HOSTNAME_SUFFIXES",
     "validate_url", "sanitize_url_for_log",
@@ -64,4 +70,5 @@ __all__ = [
     "update_vars_sheet", "print_progress",
     "ERROR_CODES", "_error_code_from_detail", "classify_errors",
     "compute_score", "compute_url_score",
+    "route_beacons", "write_result", "run_pipeline",
 ]

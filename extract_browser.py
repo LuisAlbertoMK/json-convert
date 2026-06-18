@@ -57,6 +57,12 @@ from json_convert import (  # noqa: F401 — re-export for backwards compat
     compute_url_score,
 )
 
+from json_convert.pipeline import (
+    route_beacons,
+    write_result,
+    run_pipeline,
+)
+
 import openpyxl
 from openpyxl.styles import Alignment, PatternFill
 from openpyxl.utils import get_column_letter
@@ -75,73 +81,8 @@ def _request_shutdown(signum: int | None = None, frame: object | None = None) ->
         logging.warning("Señal %s recibida. Terminando gracefulmente...", signum)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# WRITE RESULT — pipeline: escribe una URL en Excel con métricas + auto-save
-# ═══════════════════════════════════════════════════════════════════════════
-
-async def write_result(
-    ws: object, result: dict, metrics: dict,
-    excel_lock: asyncio.Lock, output_path: str,
-    saved_count: list,  # [int] mutable para closure
-    show_progress: bool = False,
-    total_urls: int = 0,
-    workers: int = 1,
-    start_time: float | None = None,
-) -> None:
-    """
-    Escribe el resultado de una URL en el Excel.
-    Usa lock para evitar corrupción entre workers.
-    """
-    async with excel_lock:
-        row = result["row"]
-        n_beacons = 1 + len(result.get("extra_beacons", []))
-
-        # digitaldata → col C
-        dd_val = result.get("digitaldata")
-        if dd_val is not None:
-            _write_cell(ws, row, 3, _pretty_json(dd_val))
-            metrics["ok_dd"] += 1
-        else:
-            _write_cell(ws, row, 3, _pretty_json({"error": "no digitaldata", "code": "DD_MISSING"}))
-
-        # AA → col D
-        if result.get("aa_parsed"):
-            _write_cell(ws, row, 4, _pretty_json(result["aa_parsed"]))
-            metrics["ok_aa"] += 1
-        else:
-            err_code = _error_code_from_detail(result.get("error", "no AA"))
-            _write_cell(ws, row, 4, _pretty_json({"error": result.get("error", "no AA"), "code": err_code}))
-
-        # Score por URL (0-100)
-        url_score = compute_url_score(result)
-
-        # Metadata → col F
-        meta = {"score": url_score, "status": result.get("status", 0),
-                "aa_source": result.get("aa_source"),
-                "beacons": n_beacons, "title": result.get("title", ""),
-                "error": result.get("error"), "code": result.get("code"),
-                "elapsed_s": result.get("elapsed_s", 0),
-                "url": result.get("url", "")[:120]}
-        if result.get("extra_beacons"):
-            meta["extra_beacons"] = result["extra_beacons"]
-        _write_cell(ws, row, 6, _pretty_json(meta))
-
-        if result.get("error") or not result["aa_parsed"]:
-            metrics["errors"] += 1
-            metrics["errores_detalle"].append({"row": row, "error": result.get("error", "no AA")})
-
-        metrics["total_beacons"] += n_beacons
-        metrics["times"].append(result["elapsed_s"])
-        metrics["retries"] += result.get("retries_used", 0)
-
-        # Guardado incremental
-        saved_count[0] += 1
-        if saved_count[0] % SAVE_EVERY_N == 0:
-            save_workbook(ws.parent, output_path)
-            logging.info("  Guardado incremental (#%d)", saved_count[0])
-        if show_progress:
-            print_progress(saved_count[0], total_urls, metrics["errors"], workers,
-                           start_time=start_time)
+# write_result, route_beacons, run_pipeline movidos a json_convert/pipeline.py
+# Se importan arriba desde json_convert.pipeline
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -348,11 +289,46 @@ async def amain() -> None:
             ignore_https_errors=True if args.proxy else False,
         )
         context.set_default_timeout(args.timeout * 1000 if args.timeout else 35000)
-        await context.route("**/*", lambda route, req: _route_beacons(route, req))
+        await context.route("**/*", lambda route, req: route_beacons(route, req))
+
+        # ── Crear process_func que cada worker usa para procesar una URL ──
+        semaphore = asyncio.Semaphore(args.workers or 3)
+
+        async def _process_one(row: int, url: str) -> dict:
+            """Crea page, procesa URL, captura beacons, cierra page."""
+            async with semaphore:
+                page = await context.new_page()
+                try:
+                    beacons: list[str] = []
+
+                    async def _capture(response: object) -> None:
+                        url_lower = response.url.lower()
+                        if any(d in url_lower for d in AA_DOMAINS):
+                            try:
+                                body = await response.body()
+                                beacons.append(response.url)
+                            except Exception:
+                                pass
+
+                    page.on("response", _capture)
+                    result = await process_url(
+                        page, row, url,
+                        wait_after=args.wait_after or 4,
+                        timeout_ms=(args.timeout or 35) * 1000,
+                        max_retry=args.max_retry or 1,
+                    )
+                    result["raw_beacons"] = beacons
+                    return result
+                finally:
+                    await page.close()
 
         # ── Pipeline (procesa URLs + escribe Excel) ──
-        results, errors_detail, metrics = await _run_pipeline(
-            context, urls, args, ws, output_path,
+        results, errors_detail, metrics = await run_pipeline(
+            _process_one, urls,
+            workers=args.workers or 3,
+            ws=ws,
+            output_path=output_path,
+            show_progress=bool(args.progress),
         )
 
         # ── Post-pipeline ──
@@ -470,112 +446,8 @@ def _resolve_output(url_source: str, market: str = None) -> str:
     return "historial.xlsx"
 
 
-async def _run_pipeline(
-    context: object,
-    urls: list[tuple[int, str]],
-    args: argparse.Namespace,
-    ws: object,
-    output_path: str,
-) -> tuple[list[dict], list[dict], dict]:
-    """Ejecuta pipeline de URLs con Playwright, escribe Excel vía write_result."""
-    semaphore = asyncio.Semaphore(args.workers or 3)
-    excel_lock = asyncio.Lock()
-    saved_count = [0]
-    results = []
-    errors_detail = []
-    metrics = {
-        "total": len(urls), "ok_aa": 0, "ok_dd": 0,
-        "errors": 0, "retries": 0,
-        "total_beacons": 0, "times": [],
-        "errores_detalle": [],
-    }
-
-    async def _process_one(row: int, url: str) -> dict:
-        async with semaphore:
-            page = await context.new_page()
-            try:
-                beacons: list[str] = []
-
-                async def _capture(response: object) -> None:
-                    url_lower = response.url.lower()
-                    if any(d in url_lower for d in AA_DOMAINS):
-                        try:
-                            body = await response.body()
-                            beacons.append(response.url)
-                        except Exception:
-                            pass
-
-                page.on("response", _capture)
-                result = await process_url(
-                    page, row, url,
-                    wait_after=args.wait_after or 4,
-                    timeout_ms=(args.timeout or 35) * 1000,
-                    max_retry=args.max_retry or 1,
-                )
-                result["raw_beacons"] = beacons
-                return result
-            finally:
-                await page.close()
-
-    pipeline_start = time.perf_counter()
-
-    async def _worker(row: int, url: str) -> None:
-        if _shutdown_flag:
-            return
-        try:
-            result = await _process_one(row, url)
-        except Exception as e:
-            # Si process_url no pudo manejar el error, registrar como fallo
-            logging.error("[%s] Fallo grave: %s", url[:60], e)
-            result = {"url": url, "row": row, "error": str(e),
-                      "aa_parsed": None, "digitaldata": None,
-                      "status": -1, "aa_source": None, "title": "",
-                      "code": "FATAL", "elapsed_s": 0, "retries_used": 0}
-            metrics["errors"] += 1
-        results.append(result)
-
-        # Escribir en Excel + actualizar métricas via pipeline write_result
-        try:
-            await write_result(
-                ws, result, metrics, excel_lock, output_path, saved_count,
-                show_progress=bool(args.progress),
-                total_urls=metrics["total"],
-                workers=args.workers or 3,
-                start_time=pipeline_start,
-            )
-        except Exception as e:
-            logging.error("[%s] Error escribiendo resultado: %s", url[:60], e)
-
-        if result.get("error"):
-            errors_detail.append({"row": row, "error": result["error"]})
-
-        if not args.progress:
-            url_index = row - 1  # 1-based URL index
-            status = "OK" if not result.get("error") else "ERR"
-            elapsed = time.perf_counter() - pipeline_start
-            logging.info("[URL %d/%d] %s %s  (%ds)", url_index, metrics["total"],
-                         status, url[:60], int(elapsed))
-
-    tasks = [_worker(row, url) for row, url in urls]
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-    metrics["total_time"] = sum(metrics["times"])
-    metrics["errores_detalle"] = errors_detail
-
-    # Guardado final
-    save_workbook(ws.parent, output_path)
-    logging.info("Guardado final (%d URLs)", len(results))
-
-    return results, errors_detail, metrics
-
-
-async def _route_beacons(route: object, request: object) -> None:
-    """Intercepta requests a dominios AA."""
-    url_lower = request.url.lower()
-    if any(domain in url_lower for domain in AA_DOMAINS):
-        await route.continue_()
-    else:
-        await route.continue_()
+# _run_pipeline y _route_beacons movidos a json_convert/pipeline.py
+# Se importan desde json_convert.pipeline
 
 
 def _print_metrics(metrics: dict, args: argparse.Namespace, output_path: str) -> int:
