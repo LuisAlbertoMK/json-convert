@@ -1,31 +1,35 @@
 # Project Score: json-convert
 
-**Current**: 7.7/10
+**Current**: 8.0/10
 **Last updated**: 2026-06-17
-**Trend**: improving (+2.7 desde 5.0)
+**Trend**: improving (+3.0 desde 5.0)
 
 ## Dimensions
 
-| Dimensión | Score |
-|-----------|-------|
-| correctness | 8 |
-| tokens | 8 |
-| errorPrevention | 7 |
-| skill | 8 |
-| speed | 7 |
-| breadth | 8 |
+| Dimensión | Score | vs anterior |
+|-----------|-------|-------------|
+| correctness | 9 | +1 |
+| tokens | 8 | — |
+| errorPrevention | 8 | +1 |
+| skill | 8 | — |
+| speed | 7 | — |
+| breadth | 8 | — |
 
-## What changed
+## What changed (esta sesión)
 
-- Monolito `extract_browser.py` (1484 → 385 líneas, -72%)
-- 4 módulos en `json_convert/`: validation, aa_parser, excel, metrics
-- 117 tests pasan (96 unit + 21 integration)
-- Pipeline `write_result` con lock + auto-save
-- CI/CD: test.yml + lint.yml + audit.yml
+- `--entorno` (preview/produccion/ambas) en extract_browser.py + menu.py
+- Akamai WAF bypass vía `channel="chrome"`
+- Fix KeyError 'status' en write_result (acceso defensivo con .get())
+- Progress display: elapsed + ETA + URL index + barra ASCII
+- `audit_report.py`: nuevo `--entorno` arg, auto-bootstrap lo pasa a extract_browser.py
+- Type hints subieron de **30% → 69%** (78 funciones, 54 tipadas)
+- **24 tests nuevos** para audit_report.py (determine_status, parse_meta_col, build_report)
+- Total: **141 tests pasando** (117 + 24)
+- README.md e install.bat actualizados
 
-## Próximos objetivos para 9+
+## Próximos objetivos para 8.5+
 
-- Type hints completos
+- Type hints en extract_browser.py (solo 17% coverage actual)
 - Playwright integration en CI (Chromium headless)
+- Cache de navegación entre corridas (speed 7→8)
 - Pipeline desacoplado a `json_convert/pipeline.py`
-- Cache de navegación entre corridas

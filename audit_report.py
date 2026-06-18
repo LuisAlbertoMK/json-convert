@@ -298,7 +298,9 @@ def write_report(failed: list[dict], all_sorted: list[dict], output_path: str):
     return output_path
 
 
-def _write_data_sheet(wb, title: str, data: list[dict], highlight_fill, highlight_state):
+def _write_data_sheet(wb: openpyxl.Workbook, title: str, data: list[dict],
+                      highlight_fill: PatternFill | None,
+                      highlight_state: str | None) -> None:
     """Escribe una hoja con datos tabulares."""
     ws = wb.create_sheet(title=title)
 
@@ -372,7 +374,7 @@ def generate_per_market_reports(pages: list[dict], base_dir: str, verbose: bool 
             print(f"    >> {market}/reporte-auditoria.xlsx ({len(market_pages)} URLs, {len(failed)} fallos)")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Reporte de URLs fallidas desde archivos de auditoría AA",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -441,12 +443,14 @@ Ejemplos:
 
             # 1. extract_browser (con --entorno para filtrar URLs)
             browser_script = os.path.join(script_dir, "extract_browser.py")
+            historial_path = os.path.join(base, "historial.xlsx")  # path absoluto!
             browser_cmd = [
                 sys.executable, browser_script, "--urls", urls_path,
+                "--output", historial_path,
                 "--split-aa", "--entorno", args.entorno,
             ]
             print(f"  Ejecutando: extract_browser (--entorno {args.entorno})...")
-            r1 = subprocess.run(browser_cmd, timeout=1800)
+            r1 = subprocess.run(browser_cmd, timeout=3600)
             if r1.returncode != 0:
                 print(f"[ERROR] extract_browser falló (exit {r1.returncode})")
                 sys.exit(1)
@@ -456,8 +460,8 @@ Ejemplos:
             aa_script = os.path.join(script_dir, "extract_aa.py")
             print("  Post-procesando con extract_aa...")
             r2 = subprocess.run(
-                [sys.executable, aa_script, "--input", "historial.xlsx", "--urls", urls_path],
-                timeout=180,
+                [sys.executable, aa_script, "--input", historial_path, "--urls", urls_path],
+                timeout=600,
             )
             if r2.returncode != 0:
                 print(f"[WARN] extract_aa falló (exit {r2.returncode})")

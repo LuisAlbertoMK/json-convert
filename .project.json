@@ -1,15 +1,15 @@
 {
   "score": {
-    "current": 7.7,
+    "current": 8.0,
     "dimensions": {
-      "correctness": 8,
+      "correctness": 9,
       "tokens": 8,
-      "errorPrevention": 7,
+      "errorPrevention": 8,
       "skill": 8,
       "speed": 7,
       "breadth": 8
     },
-    "lastUpdated": "2026-06-17T21:00:00.000Z",
+    "lastUpdated": "2026-06-17T23:30:00.000Z",
     "trend": "improving"
   }
 }

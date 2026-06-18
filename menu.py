@@ -34,7 +34,7 @@ if sys.platform == "win32":
     _HAS_ANSI = True  # Windows 10+ supports ANSI natively
 
 
-def _c(code, text):
+def _c(code: str, text: str) -> str:
     """Wrap text in ANSI code."""
     if not _HAS_ANSI:
         return text
@@ -48,22 +48,22 @@ def _c(code, text):
     return cstart + text + codes["reset"]
 
 
-def c_print(code, text, end="\n"):
+def c_print(code: str, text: str, end: str = "\n") -> None:
     print(_c(code, text), end=end)
 
 
-def separator(char="=", width=55):
+def separator(char: str = "=", width: int = 55) -> None:
     print(_c("dim", char * width))
 
 
-def header(title):
+def header(title: str) -> None:
     print()
     separator()
     c_print("bold", "  " + title)
     separator()
 
 
-def ask_int(prompt, min_v, max_v, default=None):
+def ask_int(prompt: str, min_v: int, max_v: int, default: int | None = None) -> int:
     """Pide un numero, con default opcional."""
     while True:
         raw = input(prompt).strip()
@@ -81,7 +81,7 @@ def ask_int(prompt, min_v, max_v, default=None):
         print(_c("yellow", msg))
 
 
-def confirm(prompt, default=True):
+def confirm(prompt: str, default: bool = True) -> bool:
     """Confirmacion SI/NO."""
     hint = " [Y/n]" if default else " [y/N]"
     while True:
@@ -95,7 +95,8 @@ def confirm(prompt, default=True):
         print(_c("yellow", '  Responde con "s" o "n"'))
 
 
-def run_step(cmd, label, cwd=None, timeout=None):
+def run_step(cmd: list[str], label: str, cwd: str | None = None,
+             timeout: int | None = None) -> int:
     """Ejecuta un comando mostrando output en tiempo real.
     
     Returns:
@@ -132,7 +133,7 @@ def run_step(cmd, label, cwd=None, timeout=None):
         return -3
 
 
-def run_ps1(script, args="", timeout=None):
+def run_ps1(script: str, args: str = "", timeout: int | None = None) -> int:
     """Ejecuta un script PowerShell."""
     cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-NoProfile",
            "-File", os.path.join(BASE_DIR, script)]
@@ -196,12 +197,12 @@ def _choose_entorno(non_interactive: bool = False) -> str:
     return {1: "preview", 2: "produccion", 3: "ambas"}[idx]
 
 
-def detect_markets():
+def detect_markets() -> list[tuple[str, str]]:
     """Detecta directorios de mercado con archivos de auditoria.
 
     Busca en subdirectorios (PR/, MX/, etc.) y tambien en la raiz del proyecto.
     """
-    results = []
+    results: list[tuple[str, str]] = []
     base = Path(BASE_DIR)
 
     # Buscar en subdirectorios de mercado
@@ -222,7 +223,7 @@ def detect_markets():
     return results
 
 
-def get_project_status():
+def get_project_status() -> dict:
     """Retorna estado resumido del proyecto."""
     base = Path(BASE_DIR)
     py_files = list(base.glob("*.py"))
@@ -232,7 +233,7 @@ def get_project_status():
     last_audit = "-"
     try:
         import openpyxl
-        for m, hpath in markets:
+        for _m, hpath in markets:
             wb = openpyxl.load_workbook(hpath, data_only=True)
             sheets = [s for s in wb.sheetnames if s not in ("_control", "_vars") and not s.startswith("_")]
             wb.close()
@@ -258,7 +259,7 @@ def get_project_status():
 ALL_MARKETS = "__ALL__"  # sentinel para "todos los mercados"
 
 
-def choose_market(source="detect"):
+def choose_market(source: str = "detect") -> tuple[str | None, str | None]:
     """Muestra submenu de mercados y retorna (nombre|ALL_MARKETS, archivo|None).
     
     Args:
@@ -300,7 +301,7 @@ def choose_market(source="detect"):
 #  OPCIONES DEL MENU
 # ============================================
 
-def op_auditar(non_interactive=False):
+def op_auditar(non_interactive: bool = False) -> None:
     """Opcion 2: Solo auditoria (extract_browser) por mercado."""
     header("AUDITORIA - extract_browser.py")
 
@@ -336,7 +337,7 @@ def op_auditar(non_interactive=False):
     print(_c("green", "\n  [OK] Auditoria finalizada."))
 
 
-def op_postprocesar():
+def op_postprocesar() -> None:
     """Opcion 3: Solo post-procesar (extract_aa)."""
     header("POST-PROCESO - extract_aa.py")
 
@@ -365,13 +366,13 @@ def op_postprocesar():
     print(_c("green", "\n  [OK] Post-proceso finalizado."))
 
 
-def _run_extract_aa(hpath):
+def _run_extract_aa(hpath: str) -> None:
     """Ejecuta extract_aa.py sobre un archivo historial (auto-bootstrap si falta)."""
     run_step([sys.executable, "extract_aa.py", "--input", hpath, "--urls", "urls.json"],
              "Procesando: " + hpath, timeout=600)
 
 
-def _run_extract_aa_companions(hpath):
+def _run_extract_aa_companions(hpath: str) -> None:
     """Ejecuta extract_aa.py sobre con_aa.xlsx y sin_aa.xlsx del mismo dir."""
     base_dir = os.path.dirname(hpath)
     for fname in ["con_aa.xlsx", "sin_aa.xlsx"]:
@@ -381,7 +382,7 @@ def _run_extract_aa_companions(hpath):
                      "Procesando: " + fp, timeout=600)
 
 
-def op_reporte(non_interactive=False):
+def op_reporte(non_interactive: bool = False) -> None:
     """Opcion 4: Generar reporte de fallos."""
     header("REPORTE DE FALLOS - audit_report.py")
 
@@ -391,7 +392,8 @@ def op_reporte(non_interactive=False):
 
     code = run_step(
         [sys.executable, "audit_report.py"] + urls_arg + ["--entorno", entorno],
-        f"Generando reporte (entorno: {entorno})...", timeout=600)
+        f"Generando reporte (entorno: {entorno}, puede tardar 15-30 min en auto-bootstrap)...",
+        timeout=3600)
 
     if code == 0:
         print(_c("green", "\n  [OK] Reporte global generado: reporte_auditoria.xlsx"))
@@ -405,7 +407,7 @@ def op_reporte(non_interactive=False):
         print(_c("red", "\n  [ERROR] Fallo la generacion del reporte."))
 
 
-def op_catalogo():
+def op_catalogo() -> None:
     """Opcion 7: Generar catalog de migracion."""
     header("CATALOGO DE MIGRACION - generate_migration_catalog.py")
 
@@ -482,14 +484,14 @@ def op_catalogo():
                 open_file(output_path)
 
 
-def op_limpieza():
+def op_limpieza() -> None:
     """Opcion 5: Limpieza (run.ps1 -SkipTests)."""
     header("LIMPIEZA - run.ps1")
     run_ps1("run.ps1", "-SkipTests", timeout=60)
     print(_c("green", "\n  [OK] Limpieza finalizada."))
 
 
-def op_prune():
+def op_prune() -> None:
     """Opcion 8: Limpiar columnas muertas de Excel."""
     header("LIMPIAR COLUMNAS - prune_excel_columns.py")
 
@@ -512,7 +514,7 @@ def op_prune():
         print(_c("red", "\n  [ERROR] Fallo la limpieza."))
 
 
-def op_tests():
+def op_tests() -> None:
     """Opcion 9: Ejecutar tests."""
     header("TESTS - pytest")
     rc = run_step([sys.executable, "-m", "pytest", "--tb=long", "-q"],
@@ -523,7 +525,7 @@ def op_tests():
         print(_c("red", "\n  [ERROR] Fallaron tests (codigo: " + str(rc) + ")"))
 
 
-def op_ver_resultados():
+def op_ver_resultados() -> None:
     """Opcion 6: Abrir Excel."""
     header("RESULTADOS")
 
@@ -710,7 +712,7 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
         print(_c("cyan", f"  [6/8] Generando reporte de fallos ({entorno})..."))
         rc = run_step(
             [sys.executable, "audit_report.py", "--urls", "urls.json", "--entorno", entorno],
-            "audit_report.py", timeout=60)
+            "audit_report.py", timeout=600)
         results.append(("Reporte de fallos", rc))
 
         # Paso 7: Catalogo de migracion
@@ -784,7 +786,7 @@ def _pipeline_summary(results: list) -> None:
     print()
 
 
-def open_file(path):
+def open_file(path: str) -> None:
     """Abre un archivo con la aplicacion asociada."""
     try:
         if sys.platform == "win32":
@@ -795,7 +797,7 @@ def open_file(path):
         print(_c("red", "  Error al abrir: " + str(e)))
 
 
-def show_menu():
+def show_menu() -> int:
     """Muestra el menu principal y retorna la opcion elegida."""
     status = get_project_status()
     markets_str = ", ".join(status["markets"]) if status["markets"] else "-"
@@ -830,7 +832,7 @@ def show_menu():
     return ask_int("  Opcion [0-9]: ", 0, 9)
 
 
-def run_option(opt, non_interactive=False):
+def run_option(opt: int, non_interactive: bool = False) -> bool:
     """Ejecuta la opcion. Retorna False si hay que salir."""
     start = time.time()
 
