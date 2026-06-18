@@ -326,6 +326,7 @@ def generate_catalog(historial_path: str, mapping_path: str,
 
     # ─── Datos ───
     row_idx = 2
+    all_url_results = []  # ← acumula resultados para el resumen
 
     for mapping in mappings:
         preview_url = mapping.get("preview_url", "")
@@ -355,6 +356,19 @@ def generate_catalog(historial_path: str, mapping_path: str,
         # Comparar
         param_results = compare_page(actual_page, expected_page,
                                      market_cfg, page_key)
+
+        # Acumular para resumen
+        all_url_results.append({
+            "preview_url": preview_url,
+            "production_url": production_url,
+            "aem_path": aem_path,
+            "page_key": page_key,
+            "nombre": nombre,
+            "dd_found": bool(dd),
+            "actual_page": actual_page,
+            "expected_page": expected_page,
+            "param_results": param_results,
+        })
 
         # --- FILA 1: URL + JSON actual ---
         actual_json = pp_json(actual_page) if actual_page else "{ }"
@@ -460,6 +474,253 @@ def generate_catalog(historial_path: str, mapping_path: str,
     out_wb.save(output_path)
     print(f"\n[OK] Catalogo generado: {output_path}")
     print(f"     {len(mappings)} URLs × {len(PARAMS_ORDER)} parámetros")
+
+    # Auto-generar resumen .md + .html
+    _auto_summary(all_url_results, market, os.path.dirname(output_path), market_cfg)
+
+
+# ════════════════════════════════════════════
+#  AUTO-SUMMARY (.md + .html)
+# ════════════════════════════════════════════
+
+def _auto_summary(all_url_results: list, market: str, output_dir: str,
+                  market_cfg: dict):
+    """Genera resumen .md y .html del catálogo (sin footer ni próximos pasos).
+
+    all_url_results: lista de dicts generada en generate_catalog()
+    market_cfg: config del mercado (ej: expected.json → markets["PR"])
+    """
+
+    # ── Contar estados ──
+    total_params = 0
+    ok_count = 0
+    warn_count = 0
+    create_count = 0
+    remove_count = 0
+
+    for ent in all_url_results:
+        for pr in ent["param_results"]:
+            total_params += 1
+            emoji = pr["action_emoji"]
+            if emoji == "✅":
+                ok_count += 1
+            elif emoji == "⚠️":
+                warn_count += 1
+            elif emoji == "❌":
+                create_count += 1
+            elif emoji == "🗑️":
+                remove_count += 1
+
+    ok_pct = round(ok_count / total_params * 100, 1) if total_params else 0
+    warn_pct = round(warn_count / total_params * 100, 1) if total_params else 0
+    create_pct = round(create_count / total_params * 100, 1) if total_params else 0
+    remove_pct = round(remove_count / total_params * 100, 1) if total_params else 0
+
+    today = date.today().isoformat()
+    total_urls = len(all_url_results)
+    prefix = market_cfg.get("prefix", "")
+
+    # ── Detectar patrones comunes ──
+    # Recolectar todos los page_types de páginas que no tienen pageType aún
+    pages_sin_pageType = []
+    missing_prefix = []
+    legacy_sections = set()
+    for ent in all_url_results:
+        if not ent["dd_found"]:
+            continue
+        for pr in ent["param_results"]:
+            if pr["param"] == "pageType" and pr["action_emoji"] == "❌":
+                pages_sin_pageType.append(ent["nombre"] or ent["production_url"])
+            if pr["param"] == "pageName" and pr["action_emoji"] == "⚠️" and prefix:
+                actual = pr.get("actual", "")
+                if actual and not actual.startswith(prefix):
+                    missing_prefix.append(ent["nombre"] or ent["production_url"])
+            if pr["param"] == "siteSection" and pr["action_emoji"] == "⚠️":
+                legacy_sections.add(f'{pr["actual"]} → {pr["expected"]}')
+
+    # ═══════════════════════════════════════
+    #  .md
+    # ═══════════════════════════════════════
+    md_lines = [
+        f"# Resumen Catálogo de Migración — {market}",
+        "",
+        f"**Fecha**: {today}",
+        f"**URLs analizadas**: {total_urls}",
+        f"**Parámetros por URL**: {len(PARAMS_ORDER)}",
+        f"**Total parámetros**: {total_params}",
+        "",
+        "## Resumen General",
+        "",
+        "| Estado | Cantidad | Porcentaje |",
+        "|--------|----------|------------|",
+        f"| ✅ Alineados | {ok_count} | {ok_pct}% |",
+        f"| ⚠️ Requiere cambios | {warn_count} | {warn_pct}% |",
+        f"| ❌ No existe (crear) | {create_count} | {create_pct}% |",
+        f"| 🗑️ Deprecado | {remove_count} | {remove_pct}% |",
+        "",
+    ]
+
+    # Patrones detectados
+    if pages_sin_pageType or missing_prefix or legacy_sections:
+        md_lines.append("## Patrones Detectados")
+        md_lines.append("")
+        if pages_sin_pageType:
+            md_lines.append(f"- **❌ pageType faltante**: {len(pages_sin_pageType)} páginas — nuevo parámetro del componente EUA")
+        if missing_prefix:
+            md_lines.append(f"- **⚠️ Prefijo faltante** '{prefix}': {len(missing_prefix)} páginas sin el prefijo en pageName")
+        for old_new in sorted(legacy_sections):
+            md_lines.append(f"- **⚠️ Sección legacy**: {old_new}")
+        md_lines.append("")
+
+    # Detalle por URL
+    md_lines.append("## Detalle por URL")
+    md_lines.append("")
+    all_ok = all(pr["action_emoji"] == "✅" for ent in all_url_results for pr in ent["param_results"])
+    if all_ok:
+        md_lines.append("_Todas las URLs están alineadas — no se requieren cambios._")
+        md_lines.append("")
+    else:
+        for ent in all_url_results:
+            url = ent["production_url"] or ent["preview_url"]
+            problems = [pr for pr in ent["param_results"] if pr["action_emoji"] != "✅"]
+            if not problems:
+                continue
+
+            md_lines.append(f"### {ent['nombre'] or url}")
+            md_lines.append(f"- **URL**: {url}")
+            if ent["aem_path"]:
+                md_lines.append(f"- **AEM**: {ent['aem_path']}")
+            md_lines.append("")
+            md_lines.append("| Parámetro | Actual → Esperado | Acción |")
+            md_lines.append("|-----------|-------------------|--------|")
+            for pr in problems:
+                actual = pr.get("actual", "") or "(no existe)"
+                expected = pr.get("expected", "") or "(sin regla)"
+                md_lines.append(f"| `{pr['param']}` | {actual} → {expected} | {pr['action_text']} |")
+            md_lines.append("")
+
+    md_path = os.path.join(output_dir, "resumen-catalogo-migracion.md")
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(md_lines))
+    print(f"[OK] Resumen .md: {md_path}")
+
+    # ═══════════════════════════════════════
+    #  .html (inline CSS, portable)
+    # ═══════════════════════════════════════
+    def _html_emoji(e: str) -> str:
+        """HTML-safe emoji."""
+        return {
+            "✅": "&#9989;",
+            "⚠️": "&#9888;&#65039;",
+            "❌": "&#10060;",
+            "🗑️": "&#128465;&#65039;",
+        }.get(e, e)
+
+    # Clasificar color
+    def _color(e: str) -> str:
+        return {"✅": "green", "⚠️": "orange", "❌": "red", "🗑️": "gray"}.get(e, "black")
+
+    rows = []
+    for ent in all_url_results:
+        url = ent["production_url"] or ent["preview_url"]
+        problems = [pr for pr in ent["param_results"] if pr["action_emoji"] != "✅"]
+        if not problems:
+            continue
+        rows.append(f"<tr class='url-sep'><td colspan='3'><strong>{_html_escape(ent['nombre'] or url)}</strong><br><small>{_html_escape(url)}</small></td></tr>")
+        for pr in problems:
+            actual = _html_escape(pr.get("actual", "") or "(no existe)")
+            expected = _html_escape(pr.get("expected", "") or "(sin regla)")
+            emoji = _html_emoji(pr["action_emoji"])
+            c = _color(pr["action_emoji"])
+            rows.append(f"<tr><td><code>{pr['param']}</code></td><td>{actual} → {expected}</td><td style='color:{c}'>{emoji} {_html_escape(pr['action_text'])}</td></tr>")
+
+    # Pct a color
+    health_color = "green" if ok_pct >= 80 else ("orange" if ok_pct >= 50 else "red")
+
+    html = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Resumen Catálogo Migración — {_html_escape(market)}</title>
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f8f9fa; color:#333; padding:20px; }}
+  h1 {{ font-size:1.5em; margin-bottom:4px; }}
+  .meta {{ color:#666; font-size:0.9em; margin-bottom:16px; }}
+  .meta span {{ margin-right:16px; }}
+  .summary {{ display:flex; gap:12px; margin:16px 0; flex-wrap:wrap; }}
+  .card {{ background:#fff; border-radius:8px; padding:16px 20px; flex:1; min-width:120px; box-shadow:0 1px 3px rgba(0,0,0,.08); text-align:center; }}
+  .card .num {{ font-size:1.8em; font-weight:700; }}
+  .card .label {{ font-size:0.8em; color:#666; }}
+  .health {{ font-size:1.1em; margin:12px 0 20px; padding:10px 16px; border-radius:6px; color:#fff; font-weight:600; text-align:center; }}
+  .health.green {{ background:#28a745; }}
+  .health.orange {{ background:#fd7e14; }}
+  .health.red {{ background:#dc3545; }}
+  table {{ width:100%; border-collapse:collapse; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.08); }}
+  th {{ background:#4472C4; color:#fff; padding:10px 12px; text-align:left; font-size:0.85em; }}
+  td {{ padding:8px 12px; border-bottom:1px solid #eee; font-size:0.85em; vertical-align:top; }}
+  tr.url-sep td {{ background:#eef; font-size:0.95em; border-top:2px solid #4472C4; }}
+  code {{ background:#f0f0f0; padding:1px 4px; border-radius:3px; font-size:0.9em; }}
+  .patrones {{ background:#fff; border-radius:8px; padding:16px 20px; margin:16px 0; box-shadow:0 1px 3px rgba(0,0,0,.08); }}
+  .patrones ul {{ margin:8px 0 0 20px; }}
+  .patrones li {{ margin:4px 0; }}
+</style>
+</head>
+<body>
+<h1>Resumen Catálogo de Migración — {_html_escape(market)}</h1>
+<div class="meta">
+  <span>📅 {today}</span>
+  <span>🌐 {total_urls} URLs</span>
+  <span>📊 {total_params} parámetros</span>
+</div>
+
+<div class="health {health_color}">
+  Salud del catálogo: {ok_pct}% alineado
+</div>
+
+<div class="summary">
+  <div class="card"><div class="num" style="color:#28a745">{ok_count}</div><div class="label">✅ Alineados</div></div>
+  <div class="card"><div class="num" style="color:#fd7e14">{warn_count}</div><div class="label">⚠️ Requiere cambios</div></div>
+  <div class="card"><div class="num" style="color:#dc3545">{create_count}</div><div class="label">❌ No existe (crear)</div></div>
+  <div class="card"><div class="num" style="color:#6c757d">{remove_count}</div><div class="label">🗑️ Deprecado</div></div>
+</div>
+"""
+
+    # Patrones
+    if pages_sin_pageType or missing_prefix or legacy_sections:
+        html += '<div class="patrones"><strong>Patrones Detectados</strong><ul>'
+        if pages_sin_pageType:
+            html += f"<li>❌ <strong>pageType faltante</strong>: {len(pages_sin_pageType)} páginas — nuevo parámetro del componente EUA</li>"
+        if missing_prefix:
+            html += f"<li>⚠️ <strong>Prefijo faltante</strong> '{_html_escape(prefix)}': {len(missing_prefix)} páginas sin el prefijo en pageName</li>"
+        for old_new in sorted(legacy_sections):
+            safe = _html_escape(old_new)
+            html += f"<li>⚠️ <strong>Sección legacy</strong>: {safe}</li>"
+        html += '</ul></div>'
+
+    # Tabla
+    if rows:
+        html += "<table><thead><tr><th>Parámetro</th><th>Actual → Esperado</th><th>Acción</th></tr></thead><tbody>"
+        html += "\n".join(rows)
+        html += "</tbody></table>"
+    else:
+        html += "<p style='color:green;font-size:1.1em'>✅ Todas las URLs están alineadas — no se requieren cambios.</p>"
+
+    html += "\n</body>\n</html>"
+
+    html_path = os.path.join(output_dir, "resumen-catalogo-migracion.html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"[OK] Resumen .html: {html_path}")
+
+
+def _html_escape(s: str) -> str:
+    """Escapa caracteres HTML."""
+    return (s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&#39;"))
 
 
 # ════════════════════════════════════════════

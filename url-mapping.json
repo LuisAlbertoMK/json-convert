@@ -4,14 +4,14 @@
     "production_url": "https://www.ford.com.pr/esp/donativos-ambientales/",
     "aem_path": "/content/ford/pr/es_pr/sustainability/environment",
     "page_key": "sustainability",
-    "nombre": "Puerto Rico EspaÃƒÆ’Ã‚Â±ol"
+    "nombre": "Puerto Rico Español (MX)"
   },
   {
     "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/environmental-grants.html",
     "production_url": "https://www.ford.com.pr/en/environmental-grants/",
     "aem_path": "/content/ford/pr/en_pr/sustainability/environment",
     "page_key": "sustainability",
-    "nombre": "Puerto Rico InglÃƒÆ’Ã‚Â©s"
+    "nombre": "Puerto Rico Inglés"
   },
   {
     "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/duenos/tips.html",
@@ -46,7 +46,7 @@
     "production_url": "https://www.ford.com.pr/en/owners/",
     "aem_path": "/content/ford/pr/en_pr/owners",
     "page_key": "owners",
-    "nombre": "Puerto Rico (InglÃƒÆ’Ã‚Â©s):"
+    "nombre": "Puerto Rico (Inglés):"
   },
   {
     "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/owners/tips/driving-precautions.html",

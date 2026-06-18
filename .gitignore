@@ -34,3 +34,9 @@ _check_cols.py
 # Backups generados por save_workbook fallback
 *_browser*.xlsx
 *_browser*.bak
+*.bak
+
+# Resúmenes auto-generados (se regeneran desde los .xlsx)
+**/resumen-catalogo-migracion.*
+**/match-prod-vs-preview.*
+**/backup/

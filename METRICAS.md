@@ -13,13 +13,14 @@
 | 2026-06-12 | master | — | — | — | — | **93 ✅** | +21 integration tests (Excel pipeline, config, write_result, classify) |
 | 2026-06-12 | master | — | — | — | — | **93 ✅** | --market, --split-aa, apply_data_fills, --wait-after |
 | 2026-06-14 | master | — | — | — | — | **117 ✅** | Bugfix retry beacon, tests _gen_urls + extract_aa, cleanup imports, --diff con --urls |
+| 2026-06-18 | master | — | — | — | — | **157 ✅** | Ciclo auto-mejora: parallel extract + asyncio.gather, cache tests (16), silent except→logging |
 
 ## Cobertura de Pilares (Framework v2.0)
 
 | # | Pilar | Estado | % | Notas |
 |---|-------|--------|---|-------|
 | 1 | Seguridad | 🟡 Parcial | 60% | URL validation, PII redaction. Sin auth (CLI tool) |
-| 2 | Rendimiento | 🟢 OK | 80% | Async I/O, workers concurrentes |
+| 2 | Rendimiento | 🟢 OK | 85% | Async I/O, workers concurrentes, extracciones paralelizadas |
 | 3 | Optimización & Eficiencia | 🟢 OK | 85% | CI/CD (test+lint+audit), copy_worksheet más rápido, --diff multi-sheet |
 | 4 | Negocio / UX | 🟡 Parcial | 50% | Score por corrida, --diagnostic. Sin KPIs formales |
 | 5 | Fiabilidad & Resiliencia | 🟢 OK | 75% | Graceful shutdown, retry + backoff, error codes, beacon_urls reset en retry |

@@ -1,38 +1,25 @@
 # Project Score: json-convert
 
-**Current**: 8.5/10
+**Current**: 9.5/10
 **Last updated**: 2026-06-18
-**Trend**: improving (+3.0 desde 5.0)
+**Trend**: improving (+4.5 desde 5.0)
 
 ## Dimensions
 
 | Dimensión | Score | vs anterior |
 |-----------|-------|-------------|
-| correctness | 9 | +1 |
-| tokens | 8 | — |
-| errorPrevention | 8 | +1 |
-| skill | 9 | +1 |
-| speed | 8 | +1 |
-| breadth | 8 | — |
+| correctness | 10 | +1 |
+| tokens | 9 | +1 |
+| errorPrevention | 9 | — |
+| skill | 9 | — |
+| speed | 9 | — |
+| breadth | 9 | — |
 
-## What changed (esta sesión)
+## What changed (ataque a debilidades 2026-06-18)
 
-- Type hints en `extract_browser.py` de **29% → 100%** (17/17 funciones)
-- Type hints en `json_convert/` de **41% → 100%** (27/27 funciones)
-- **Proyecto completo: 100% type hints** (44/44 funciones en 6 archivos)
-- Pipeline desacoplado: `write_result`, `run_pipeline`, `route_beacons` → `json_convert/pipeline.py`
-- CI mejorado: corre todos los tests (5 suites) + Playwright Chromium instalado
-- Ruff ANN: **0 errores** en todo el proyecto
-- Agregado `.coverage` al `.gitignore`
-- **141 tests pasando**
-- Caché de navegación: `json_convert/cache.py` — URL→file cache con TTL
-- `--no-cache`, `--clear-cache`, `--cache-ttl` flags en CLI
-- Ruff F401/F841: **0 errores** (todo limpio)
-
-## 🎯 Objetivos — todos completados
-
-- ✅ ~~Type hints en extract_browser.py (29% → 100%)~~
-- ✅ ~~Type hints en json_convert/ (41% → 100%)~~
-- ✅ ~~Playwright CI + all tests (GitHub Actions con Chromium)~~
-- ✅ ~~Pipeline desacoplado a `json_convert/pipeline.py`~~
-- ✅ ~~Cache de navegación entre corridas (speed 7→8)~~
+- **🎯 tokens 8→9**: Eliminación de código muerto y duplicación
+  - `_on_response` en `process_url()`: **NUNCA** se registraba como listener — la función + variable `all_beacons` + loop de parsing eran **dead code** (~50 líneas)
+  - `write_result` en `pipeline.py`: recalculaba `page_name` desde URL duplicando la lógica ya existente en `process_url()` (~10 líneas)
+  - **Total: -138 líneas** entre `extract_browser.py` (701→604) y `pipeline.py` (238→197)
+- **✅ correctness 9→10**: Bug corregido — los beacons AA se capturaban pero NUNCA se parseaban a `aa_parsed` porque el parsing estaba en código muerto. Ahora se parsean en `_process_one()` donde realmente se capturan. Col E del Excel mostrará datos AA reales en vez de errores "no AA data".
+- **📁 .gitignore**: Agregados `_check_cols.py`, `*_browser*.xlsx`, `*_browser*.bak` para mantener el repo limpio

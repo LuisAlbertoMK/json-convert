@@ -561,6 +561,104 @@ def op_tests() -> None:
         print(_c("red", "\n  [ERROR] Fallaron tests (codigo: " + str(rc) + ")"))
 
 
+def op_match() -> None:
+    """Opcion 10: Match prod vs preview."""
+    header("MATCH PROD VS PREVIEW - match_prod_preview.py")
+
+    # Detectar mercados
+    markets = detect_markets()
+    if not markets:
+        print(_c("yellow", "  No se encontraron archivos de auditoria."))
+        print("  Ejecuta primero una auditoria (opcion 1 o 2).")
+        return
+
+    print(_c("cyan", "  Mercados detectados:"))
+    for i, (m, hpath) in enumerate(markets, 1):
+        extra = ""
+        prev_path = os.path.join(BASE_DIR, m, "historial_preview.xlsx")
+        if os.path.exists(prev_path):
+            extra = _c("green", " [preview OK]")
+        else:
+            extra = _c("yellow", " [sin preview — usando expected.json]")
+        print(f"    {i}. {m} ({os.path.relpath(hpath, BASE_DIR)}){extra}")
+
+    if len(markets) == 1:
+        m_idx = 1
+    else:
+        m_idx = ask_int("  Selecciona mercado [1-" + str(len(markets)) + "]: ", 1, len(markets))
+
+    market_name, historial_path = markets[m_idx - 1]
+    mapping_path = os.path.join(BASE_DIR, "url-mapping.json")
+    expected_path = os.path.join(BASE_DIR, "expected.json")
+
+    if not os.path.exists(mapping_path):
+        print(_c("red", "  No se encuentra url-mapping.json"))
+        return
+    if not os.path.exists(expected_path):
+        print(_c("red", "  No se encuentra expected.json"))
+        return
+
+    # Chequear si hay preview
+    preview_path = os.path.join(BASE_DIR, market_name, "historial_preview.xlsx")
+    preview_arg = []
+    if os.path.exists(preview_path):
+        preview_arg = ["--preview", preview_path]
+        print(_c("green", f"\n  Preview detectado: {market_name}/historial_preview.xlsx"))
+    else:
+        print(_c("yellow", "\n  Sin preview — usando expected.json como prometido"))
+        print("  Para extraer preview: corre opcion 2 con --entorno preview y VPN activa.")
+        print(f"  Luego renombrar a: {market_name}/historial_preview.xlsx")
+
+    if confirm("  Generar match report?", default=True):
+        run_step(
+            [sys.executable, "match_prod_preview.py",
+             "--production", historial_path,
+             "--mapping", mapping_path,
+             "--expected", expected_path,
+             "--market", market_name] + preview_arg,
+            f"Match {market_name}...", timeout=60)
+
+        output_path = os.path.join(BASE_DIR, market_name, "match-prod-vs-preview.xlsx")
+        if os.path.exists(output_path):
+            print(_c("green", f"\n  [OK] Match generado: {market_name}/match-prod-vs-preview.xlsx"))
+            print(_c("green", f"       HTML: {market_name}/match-prod-vs-preview.html"))
+            if confirm("  Abrir el HTML?", default=True):
+                open_file(os.path.join(BASE_DIR, market_name, "match-prod-vs-preview.html"))
+
+
+def op_ver_resumen() -> None:
+    """Opcion 11: Abrir resumen del catálogo .html."""
+    header("RESUMEN CATALOGO MIGRACION")
+
+    # Buscar resumenes .html en directorios de mercado
+    resumenes = []
+    base = Path(BASE_DIR)
+    for d in base.iterdir():
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        html_path = d / "resumen-catalogo-migracion.html"
+        if html_path.exists():
+            resumenes.append((d.name.upper(), str(html_path)))
+
+    # Tambien en la raiz
+    root_html = base / "resumen-catalogo-migracion.html"
+    if root_html.exists():
+        resumenes.append(("RAIZ", str(root_html)))
+
+    if not resumenes:
+        print(_c("yellow", "  No se encontraron resumenes de catálogo."))
+        print("  Genera primero el catálogo (opcion 7) que auto-genera el resumen.")
+        return
+
+    print(_c("cyan", "  Resúmenes disponibles:"))
+    for i, (m, path) in enumerate(resumenes, 1):
+        size = os.path.getsize(path)
+        print(f"    {i}. {m} ({size // 1024} KB)")
+
+    idx = ask_int("  Cuál querés ver [1-" + str(len(resumenes)) + "]: ", 1, len(resumenes))
+    open_file(resumenes[idx - 1][1])
+
+
 def op_ver_resultados() -> None:
     """Opcion 6: Abrir Excel."""
     header("RESULTADOS")
@@ -861,12 +959,14 @@ def show_menu() -> int:
     print("  " + _c("bold", "7") + ") " + _c("magenta", "[M]") + "  Catalogo migracion   generate_migration_catalog.py")
     print("  " + _c("bold", "8") + ") " + _c("yellow", "[P]") + "  Limpiar columnas     prune_excel_columns.py")
     print("  " + _c("bold", "9") + ") " + _c("green", "[T]") + "  Ejecutar tests       pytest")
+    print("  " + _c("bold", "10") + ") " + _c("magenta", "[D]") + " Match prod vs preview  comparar prometido vs entregado")
+    print("  " + _c("bold", "11") + ") " + _c("blue", "[S]") + "  Ver resumen catálogo   abrir .html")
     print()
     separator("-", 55)
     print("  " + _c("dim", "0") + ") " + _c("dim", "x  Salir"))
     separator("=", 55)
 
-    return ask_int("  Opcion [0-9]: ", 0, 9)
+    return ask_int("  Opcion [0-11]: ", 0, 11)
 
 
 def run_option(opt: int, non_interactive: bool = False) -> bool:
@@ -892,6 +992,10 @@ def run_option(opt: int, non_interactive: bool = False) -> bool:
         op_prune()
     elif opt == 9:
         op_tests()
+    elif opt == 10:
+        op_match()
+    elif opt == 11:
+        op_ver_resumen()
     elif opt == 0:
         print()
         c_print("green", "  Hasta luego!")
@@ -912,7 +1016,7 @@ def run_option(opt: int, non_interactive: bool = False) -> bool:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Panel de control json-convert")
     parser.add_argument("--run", type=str,
-                        help="Ejecutar opcion directa: numero 1-9, 0, o 'auto'")
+                        help="Ejecutar opcion directa: numero 1-11, 0, o 'auto'")
     args = parser.parse_args()
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -934,11 +1038,11 @@ if __name__ == "__main__":
     # Modo directo --run
     if args.run:
         opt_map = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8,
-                   "9": 9, "0": 0, "auto": 1}
+                   "9": 9, "10": 10, "11": 11, "0": 0, "auto": 1}
         opt = opt_map.get(args.run, -1)
         if opt < 0:
             print(_c("red", "[ERROR] Opcion invalida: " + args.run))
-            print("  Valores validos: 1-9, 0, 'auto'")
+            print("  Valores validos: 1-11, 0, 'auto'")
             sys.exit(1)
 
         # Modo no-interactivo: respuestas automaticas
