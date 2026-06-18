@@ -6,6 +6,8 @@ formatos, sheets multi-fecha, control sheets, split AA,
 colores condicionales y guardado con fallback.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -54,16 +56,16 @@ DATA_FILLS = {
 # FORMATO
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _pretty_json(obj):
+def _pretty_json(obj: object) -> str:
     return json.dumps(obj, indent=2, ensure_ascii=False)
 
 
-def _set_col_widths(ws):
+def _set_col_widths(ws: object) -> None:
     for col, w in [("A", 15), ("B", 15), ("C", 80), ("D", 100), ("E", 80), ("F", 60)]:
         ws.column_dimensions[col].width = w
 
 
-def _auto_row_height(ws):
+def _auto_row_height(ws: object) -> None:
     """Ajusta alto de filas segun el maximo de lineas JSON en cols 3-4-5-6."""
     JSON_COLS = [3, 4, 5, 6]
     LINE_HEIGHT = 15
@@ -81,7 +83,7 @@ def _auto_row_height(ws):
             ws.row_dimensions[row].height = height
 
 
-def _write_cell(ws, row, col, value, wrap=True):
+def _write_cell(ws: object, row: int, col: int, value: object, wrap: bool = True) -> None:
     cell = ws.cell(row, col)
     cell.value = value
     cell.number_format = "@"
@@ -92,7 +94,7 @@ def _write_cell(ws, row, col, value, wrap=True):
 # VALIDACION DE SHEET
 # ═══════════════════════════════════════════════════════════════════════════
 
-def validate_sheet(ws) -> list:
+def validate_sheet(ws: object) -> list:
     errores = []
     header = str(ws.cell(1, 2).value or "").strip().lower()
     if "pagina" not in header:
@@ -107,7 +109,7 @@ def validate_sheet(ws) -> list:
 # PERSISTENCIA
 # ═══════════════════════════════════════════════════════════════════════════
 
-def save_workbook(wb, path):
+def save_workbook(wb: object, path: str) -> str:
     """Guarda con fallback si el archivo está bloqueado."""
     try:
         wb.save(path)
@@ -154,7 +156,7 @@ def _has_json_data(val: str) -> bool:
         return False
 
 
-def apply_data_fills(ws):
+def apply_data_fills(ws: object) -> None:
     """Aplica colores de fondo a celdas de datos segun su contenido (JSON-aware)."""
     RED = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
     YELLOW = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
@@ -175,7 +177,7 @@ def apply_data_fills(ws):
 # SPLIT AA
 # ═══════════════════════════════════════════════════════════════════════════
 
-def split_aa_workbooks(wb, audit_date: str, output_dir: str):
+def split_aa_workbooks(wb: object, audit_date: str, output_dir: str) -> None:
     """Crea con_aa.xlsx y sin_aa.xlsx a partir del sheet audit_date."""
     ws = wb[audit_date]
     con_rows, sin_rows = [], []
@@ -257,9 +259,9 @@ def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
     return wb, ws, audit_date, False
 
 
-def update_control(wb, audit_date: str, source: str, total: int,
+def update_control(wb: object, audit_date: str, source: str, total: int,
                    ok_aa: int, ok_dd: int, errors: int, retries: int,
-                   score: int, elapsed_s: float, workers: int):
+                   score: int, elapsed_s: float, workers: int) -> None:
     """Agrega fila al sheet _control."""
     if "_control" not in wb.sheetnames:
         cs = wb.create_sheet("_control")
@@ -273,7 +275,7 @@ def update_control(wb, audit_date: str, source: str, total: int,
     ])
 
 
-def update_vars_sheet(wb, audit_date: str, rows_aa: list[tuple[int, dict]]):
+def update_vars_sheet(wb: object, audit_date: str, rows_aa: list[tuple[int, dict]]) -> None:
     """Crea/actualiza sheet _vars con las eVars y props detectadas."""
     sheet_name = "_vars"
     if sheet_name in wb.sheetnames:
@@ -301,7 +303,7 @@ def update_vars_sheet(wb, audit_date: str, rows_aa: list[tuple[int, dict]]):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def print_progress(done: int, total: int, errors: int, workers: int,
-                   start_time: float | None = None):
+                   start_time: float | None = None) -> None:
     """Muestra barra de progreso en consola con elapsed + ETA."""
     import time as _time
     pct = done / max(total, 1) * 100

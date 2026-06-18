@@ -6,6 +6,8 @@ Contiene funciones 100% puras (testeables sin navegador) y
 funciones async que dependen de page (Playwright).
 """
 
+from __future__ import annotations
+
 import json as _json
 import logging
 import re
@@ -29,7 +31,7 @@ def parse_aa_beacon(beacon_url: str, page_title: str = "") -> dict:
     parsed = urlparse(beacon_url)
     qs = parse_qs(parsed.query)
 
-    def first(key):
+    def first(key: str) -> str:
         vals = qs.get(key, [])
         return vals[0] if vals else ""
 
@@ -126,7 +128,7 @@ def build_aa_from_s(s_obj: dict, page_title: str = "") -> dict:
     }
 
 
-async def extract_s_object(page) -> dict | None:
+async def extract_s_object(page: object) -> dict | None:
     """Lee window.s desde el navegador."""
     try:
         s_obj = await page.evaluate("""() => {
@@ -149,7 +151,7 @@ async def extract_s_object(page) -> dict | None:
         return None
 
 
-async def extract_digital_data(page) -> dict | None:
+async def extract_digital_data(page: object) -> dict | None:
     """Extrae data layer probando varios nombres."""
     for var_name in DATA_LAYER_NAMES:
         try:
@@ -161,7 +163,7 @@ async def extract_digital_data(page) -> dict | None:
     return None
 
 
-async def extract_title(page) -> str:
+async def extract_title(page: object) -> str:
     """Extrae el título de la página."""
     try:
         return (await page.evaluate("document.title") or "").strip()
@@ -170,7 +172,7 @@ async def extract_title(page) -> str:
         return ""
 
 
-async def try_dismiss_cookie_consent(page):
+async def try_dismiss_cookie_consent(page: object) -> bool:
     """Intenta cerrar banners de consentimiento comunes."""
     selectors = [
         "button:has-text('Aceptar')", "button:has-text('Accept')",
