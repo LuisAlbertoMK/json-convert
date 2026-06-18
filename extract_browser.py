@@ -5,6 +5,8 @@ Delegates logic to json_convert package modules.
 Uso: python extract_browser.py [--urls urls.json] [--workers N] ...
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -66,7 +68,7 @@ _shutdown_flag = False
 """Global flag: set by signal handler to request graceful shutdown."""
 
 
-def _request_shutdown(signum=None, frame=None):
+def _request_shutdown(signum: int | None = None, frame: object | None = None) -> None:
     global _shutdown_flag
     if not _shutdown_flag:
         _shutdown_flag = True
@@ -78,7 +80,7 @@ def _request_shutdown(signum=None, frame=None):
 # ═══════════════════════════════════════════════════════════════════════════
 
 async def write_result(
-    ws, result: dict, metrics: dict,
+    ws: object, result: dict, metrics: dict,
     excel_lock: asyncio.Lock, output_path: str,
     saved_count: list,  # [int] mutable para closure
     show_progress: bool = False,
@@ -155,7 +157,7 @@ BEACON_REGEX = re.compile(
 
 
 async def process_url(
-    page, row: int, url: str,
+    page: object, row: int, url: str,
     wait_after: int = 4,
     timeout_ms: int = 35000,
     max_retry: int = 1,
@@ -180,7 +182,7 @@ async def process_url(
     parsed_aa = []
     extra_aa = []
 
-    async def _on_response(response):
+    async def _on_response(response: object) -> None:
         if _shutdown_flag:
             return
         url_lower = response.url.lower()
@@ -302,7 +304,7 @@ def _page_name_from_url(url: str) -> str:
 # MAIN (async)
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def amain():
+async def amain() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
@@ -382,7 +384,7 @@ async def amain():
         await browser.close()
 
 
-def _build_parser():
+def _build_parser() -> argparse.ArgumentParser:
     import argparse
     p = argparse.ArgumentParser(description="Extrae Adobe Analytics de URLs Ford")
     p.add_argument("--urls", help="Archivo JSON con URLs")
@@ -408,13 +410,13 @@ def _build_parser():
     return p
 
 
-def _setup_logging(verbose: bool):
+def _setup_logging(verbose: bool) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(level=level, format="%(asctime)s [%(levelname)s] %(message)s",
                         datefmt="%H:%M:%S")
 
 
-def _resolve_urls(args):
+def _resolve_urls(args: argparse.Namespace) -> tuple[list[tuple[int, str]], str]:
     """Determina fuente de URLs: JSON o Excel clasico."""
     if args.urls:
         import json
@@ -468,7 +470,13 @@ def _resolve_output(url_source: str, market: str = None) -> str:
     return "historial.xlsx"
 
 
-async def _run_pipeline(context, urls, args, ws, output_path):
+async def _run_pipeline(
+    context: object,
+    urls: list[tuple[int, str]],
+    args: argparse.Namespace,
+    ws: object,
+    output_path: str,
+) -> tuple[list[dict], list[dict], dict]:
     """Ejecuta pipeline de URLs con Playwright, escribe Excel vía write_result."""
     semaphore = asyncio.Semaphore(args.workers or 3)
     excel_lock = asyncio.Lock()
@@ -482,13 +490,13 @@ async def _run_pipeline(context, urls, args, ws, output_path):
         "errores_detalle": [],
     }
 
-    async def _process_one(row, url):
+    async def _process_one(row: int, url: str) -> dict:
         async with semaphore:
             page = await context.new_page()
             try:
-                beacons = []
+                beacons: list[str] = []
 
-                async def _capture(response):
+                async def _capture(response: object) -> None:
                     url_lower = response.url.lower()
                     if any(d in url_lower for d in AA_DOMAINS):
                         try:
@@ -511,7 +519,7 @@ async def _run_pipeline(context, urls, args, ws, output_path):
 
     pipeline_start = time.perf_counter()
 
-    async def _worker(row, url):
+    async def _worker(row: int, url: str) -> None:
         if _shutdown_flag:
             return
         try:
@@ -561,7 +569,7 @@ async def _run_pipeline(context, urls, args, ws, output_path):
     return results, errors_detail, metrics
 
 
-async def _route_beacons(route, request):
+async def _route_beacons(route: object, request: object) -> None:
     """Intercepta requests a dominios AA."""
     url_lower = request.url.lower()
     if any(domain in url_lower for domain in AA_DOMAINS):
@@ -570,7 +578,7 @@ async def _route_beacons(route, request):
         await route.continue_()
 
 
-def _print_metrics(metrics, args, output_path):
+def _print_metrics(metrics: dict, args: argparse.Namespace, output_path: str) -> int:
     """Muestra metricas finales en consola."""
     success_rate = (metrics["ok_aa"] / max(metrics["total"], 1)) * 100
     dd_rate = (metrics["ok_dd"] / max(metrics["total"], 1)) * 100
@@ -630,7 +638,7 @@ def _print_metrics(metrics, args, output_path):
 # ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════
 
-def main():
+def main() -> None:
     try:
         signal.signal(signal.SIGINT, _request_shutdown)
         signal.signal(signal.SIGTERM, _request_shutdown)
