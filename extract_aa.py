@@ -3,6 +3,8 @@ extract_aa.py — Extrae campos seleccionables del JSON de Adobe Analytics en Ex
 
 Lee col E (AA analytics automatico), extrae campos elegidos, escribe en col F (estructurado).
 
+Header-aware: detecta columnas por nombre (backwards compat con formato viejo de 6 cols).
+
 Uso:
   python extract_aa.py                                          # valores por defecto
   python extract_aa.py --keep page,request,props,evars          # solo estos 4
@@ -35,8 +37,8 @@ ALL_FIELDS = [
 
 
 def _auto_row_height(ws):
-    """Ajusta alto de filas segun el maximo de lineas JSON en cols C-D-E-F (3-6)."""
-    JSON_COLS = [3, 4, 5, 6]
+    """Ajusta alto de filas segun el maximo de lineas JSON en cols JSON (3-7)."""
+    JSON_COLS = [3, 4, 5, 6, 7]
     LINE_HEIGHT = 15  # puntos por linea aprox para Calibri 11
     MAX_HEIGHT = 409  # limite Excel
     for row in range(2, ws.max_row + 1):
@@ -218,17 +220,22 @@ def main():
         ws = wb[candidates[0]]
         logging.info("Sheet auto-detectado: '%s'", candidates[0])
 
-    # Validar col E
-    e_header = str(ws.cell(1, 4).value or "").strip().lower()
-    if e_header and "analytics" not in e_header:
-        logging.warning("Col D header no esperado: '%s'", ws.cell(1, 4).value)
+    # Header-aware column detection (backwards compat: old=6cols, new=7cols)
+    hdr = {str(ws.cell(1, c).value or "").strip().lower(): c for c in range(1, ws.max_column + 1)}
+    aa_src_col = hdr.get("aa analytics (automatico)", 4)   # read from: old col D, new col E
+    aa_dst_col = hdr.get("aa analytics (estructurado)", 5)  # write to: old col E, new col F
+
+    src_col_letter = openpyxl.utils.get_column_letter(aa_src_col)
+    if "analytics" not in str(ws.cell(1, aa_src_col).value or "").lower():
+        logging.warning("Col %s header no esperado: '%s'",
+                        src_col_letter, ws.cell(1, aa_src_col).value)
 
     total = 0
     errores = []
     stats_rows = []
 
     for row in range(2, ws.max_row + 1):
-        raw = ws.cell(row, 4).value  # col D (AA analytics)
+        raw = ws.cell(row, aa_src_col).value  # AA analytics (col E nueva / col D vieja)
         if not raw:
             errores.append((row, "COL_E_EMPTY", "col E vacia"))
             continue
@@ -253,7 +260,7 @@ def main():
             continue
 
         pretty = json.dumps(extracted, indent=2, ensure_ascii=False)
-        cell = ws.cell(row, 5)
+        cell = ws.cell(row, aa_dst_col)
         cell.value = pretty
         cell.number_format = "@"  # texto plano — evita que Excel interprete JSON como numero/fecha
         cell.alignment = Alignment(wrap_text=True, vertical="top")
@@ -263,8 +270,9 @@ def main():
         if args.score:
             stats_rows.append({"row": row, "fields": list(extracted.keys()), **count_values(extracted)})
 
-    # Ancho col E
-    ws.column_dimensions["E"].width = 80
+    # Ancho col destino
+    dst_letter = openpyxl.utils.get_column_letter(aa_dst_col)
+    ws.column_dimensions[dst_letter].width = 80
 
     # Auto-ajuste alto de filas segun contenido JSON
     _auto_row_height(ws)

@@ -81,8 +81,8 @@ class TestMultisheetPipeline(unittest.TestCase):
         self.assertIn("_control", wb.sheetnames)
         self.assertIn(audit_date, wb.sheetnames)
 
-        # Verificar headers
-        headers = [ws.cell(1, c).value for c in range(1, 7)]
+        # Verificar headers (nuevo layout: 7 columnas)
+        headers = [ws.cell(1, c).value for c in range(1, 8)]
         self.assertEqual(headers, SHEET_HEADERS)
 
         # setup_multisheet crea estructura + headers.
@@ -452,6 +452,7 @@ class TestWriteResultIntegration(unittest.TestCase):
             "row": 2, "url": "https://www.ford.com/home",
             "status": 200, "error": None, "code": None,
             "title": "Ford Home Page", "digitaldata": {"page": "home"},
+            "digitaldata_auto": {"page": "home"},
             "aa_parsed": {"events": ["event1"]},
             "aa_source": "beacon", "extra_beacons": [{"events": ["event2"]}],
             "elapsed_s": 3.5, "retries_used": 0,
@@ -464,21 +465,26 @@ class TestWriteResultIntegration(unittest.TestCase):
         self.assertEqual(metrics["errors"], 0)
         self.assertEqual(metrics["total_beacons"], 2)  # 1 principal + 1 extra
 
-        # Verificar celdas
-        dd_val = self.ws.cell(2, 3).value  # col C = digitaldata
-        self.assertIn("home", dd_val or "")
-        aa_val = self.ws.cell(2, 4).value  # col D = AA analytics
+        # Verificar celdas — nuevo layout:
+        #   C (3) = digitaldata manual, D (4) = digitaldata auto
+        #   E (5) = AA analytics, G (7) = metadata
+        dd_manual = self.ws.cell(2, 3).value  # col C = digitaldata (manual/primary)
+        self.assertIn("home", dd_manual or "")
+        dd_auto = self.ws.cell(2, 4).value  # col D = digitaldata (automatica)
+        self.assertIn("home", dd_auto or "")
+        aa_val = self.ws.cell(2, 5).value  # col E = AA analytics
         self.assertIn("event1", aa_val or "")
-        meta_val = self.ws.cell(2, 6).value  # col F = metadata
+        meta_val = self.ws.cell(2, 7).value  # col G = metadata
         self.assertIn("score", meta_val or "")
         self.assertIn("beacon", meta_val or "")
 
     def test_write_error_result(self):
-        """Resultado con error → col D muestra error, se registra en metrics."""
+        """Resultado con error → cols de AA/dd muestran error, se registra en metrics."""
         result = {
             "row": 2, "url": "https://www.ford.com/home",
             "status": -1, "error": "timeout", "code": "TIMEOUT",
             "title": "", "digitaldata": None,
+            "digitaldata_auto": None,
             "aa_parsed": None,
             "aa_source": None, "extra_beacons": [],
             "elapsed_s": 35.0, "retries_used": 2,
@@ -491,17 +497,19 @@ class TestWriteResultIntegration(unittest.TestCase):
         self.assertEqual(metrics["total_beacons"], 1)  # 1 default
         self.assertEqual(len(metrics["errores_detalle"]), 1)
 
-        # Verificar col D = error en JSON
-        aa_val = self.ws.cell(2, 4).value
+        # Verificar col E = error en AA
+        aa_val = self.ws.cell(2, 5).value
         self.assertIn("timeout", aa_val or "")
         self.assertIn("TIMEOUT", aa_val or "")
 
-        # Verificar col C = error en JSON
-        dd_val = self.ws.cell(2, 3).value
-        self.assertIn("no digitaldata", dd_val or "")
+        # Verificar col C (manual) y D (auto) = error en JSON
+        dd_manual = self.ws.cell(2, 3).value
+        self.assertIn("no digitaldata", dd_manual or "")
+        dd_auto = self.ws.cell(2, 4).value
+        self.assertIn("no digitaldata", dd_auto or "")
 
-        # Verificar metadata incluye el error
-        meta_val = self.ws.cell(2, 6).value
+        # Verificar metadata incluye el error (col G)
+        meta_val = self.ws.cell(2, 7).value
         self.assertIn("TIMEOUT", meta_val or "")
 
     def test_write_partial_result(self):
@@ -510,6 +518,7 @@ class TestWriteResultIntegration(unittest.TestCase):
             "row": 2, "url": "https://www.ford.com/home",
             "status": 200, "error": "no AA data captured", "code": "NO_AA_DATA",
             "title": "Ford Page", "digitaldata": {"page": "home"},
+            "digitaldata_auto": {"page": "home"},
             "aa_parsed": None,
             "aa_source": None, "extra_beacons": [],
             "elapsed_s": 8.0, "retries_used": 0,
@@ -520,12 +529,16 @@ class TestWriteResultIntegration(unittest.TestCase):
         self.assertEqual(metrics["ok_aa"], 0)
         self.assertEqual(metrics["errors"], 1)  # por aa_parsed=None
 
-        # col C = digitaldata
-        dd_val = self.ws.cell(2, 3).value
-        self.assertIn("home", dd_val or "")
+        # col C (manual) = digitaldata
+        dd_manual = self.ws.cell(2, 3).value
+        self.assertIn("home", dd_manual or "")
 
-        # col D = error en JSON (no "parentizado")
-        aa_val = self.ws.cell(2, 4).value
+        # col D (auto) = digitaldata
+        dd_auto = self.ws.cell(2, 4).value
+        self.assertIn("home", dd_auto or "")
+
+        # col E = error en JSON (no "parentizado")
+        aa_val = self.ws.cell(2, 5).value
         self.assertIn("no AA data captured", aa_val or "")
         self.assertIn("NO_AA_DATA", aa_val or "")
 

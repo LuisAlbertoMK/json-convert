@@ -88,7 +88,10 @@ def load_json(path: str) -> dict:
 
 
 def find_digitaldata_in_historial(historial_path: str, preview_url: str) -> dict:
-    """Busca el digitalData de una URL en el historial."""
+    """Busca el digitalData de una URL en el historial.
+    
+    Header-aware: busca "digitaldata (automatica)" o fallback a col 3.
+    """
     wb = openpyxl.load_workbook(historial_path, data_only=True)
     data_sheet = None
     for sn in wb.sheetnames:
@@ -99,10 +102,18 @@ def find_digitaldata_in_historial(historial_path: str, preview_url: str) -> dict
         wb.close()
         return {}
 
+    # Header-aware column detection
+    dd_col = 3  # default: old format
+    for c in range(1, data_sheet.max_column + 1):
+        hv = data_sheet.cell(1, c).value
+        if hv and "digitaldata (automatica)" in str(hv).strip().lower():
+            dd_col = c
+            break
+
     for row in range(2, data_sheet.max_row + 1):
         url_cell = data_sheet.cell(row, 2).value
         if url_cell and preview_url in str(url_cell):
-            dd_raw = data_sheet.cell(row, 3).value
+            dd_raw = data_sheet.cell(row, dd_col).value
             wb.close()
             if dd_raw and isinstance(dd_raw, str):
                 try:

@@ -20,7 +20,7 @@ AA_DOMAINS = [
 
 # Nombres de variables de data layer a probar en el navegador
 DATA_LAYER_NAMES = [
-    "window.digitaldata", "window.dataLayer",
+    "window.digitalData", "window.digitaldata", "window.dataLayer",
     "window.digital_data", "window.utag_data",
 ]
 

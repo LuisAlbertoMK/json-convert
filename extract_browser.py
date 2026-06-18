@@ -19,6 +19,7 @@ from datetime import timedelta
 
 import openpyxl
 from playwright.async_api import TimeoutError as PwTimeout
+from playwright.async_api import Error as PwError
 from playwright.async_api import async_playwright
 
 from json_convert import (  # noqa: F401 — re-export for backwards compat
@@ -95,6 +96,26 @@ BEACON_REGEX = re.compile(
 )
 
 
+async def _fetch_html_via_http(url: str, timeout_ms: int) -> str:
+    """Fetch HTML via stdlib urllib — sin dependencias extra.
+    Útil como fallback cuando Playwright goto falla con ERR_ABORTED."""
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "es-PR,es;q=0.9,en;q=0.8",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=max(1, timeout_ms // 1000)) as resp:
+        raw = resp.read()
+    return raw.decode("utf-8", errors="replace")
+
+
 async def process_url(
     page: object, row: int, url: str,
     wait_after: int = 4,
@@ -138,8 +159,14 @@ async def process_url(
         if _shutdown_flag:
             break
         try:
+            # Estrategia progresiva de wait_until:
+            #   0: domcontentloaded (rápido, default)
+            #   1: commit (solo respuesta inicial, evita ERR_ABORTED)
+            #   2+: load (espera todo, para páginas lentas)
+            _wait_strategies = ["domcontentloaded", "commit", "load"]
+            _wait = _wait_strategies[min(attempt, len(_wait_strategies) - 1)]
             async with page.context.expect_page(timeout=timeout_ms) as popup_info:
-                await page.goto(url, wait_until="domcontentloaded",
+                await page.goto(url, wait_until=_wait,
                                 timeout=timeout_ms)
             try:
                 popup = await popup_info.value
@@ -176,12 +203,53 @@ async def process_url(
         except Exception as e:
             navigation_error = f"Error al navegar: {e}"
             logging.debug("Error en intento %d: %s", attempt + 1, e)
+
+            # ERR_ABORTED: página abortó navegación, pero puede tener DOM parcial
+            if "ERR_ABORTED" in str(e):
+                try:
+                    last_dd = await extract_digital_data(page)
+                    last_title = await extract_title(page)
+                    if last_dd:
+                        logging.debug(
+                            "ERR_ABORTED pero se extrajo digitalData "
+                            "del DOM parcial: %s", url[:80]
+                        )
+                        navigation_error = ""  # recuperado
+                        break
+                except Exception:
+                    pass
+
             if attempt < max_retry:
                 # ⚠ page puede estar cerrada si el browser perdió conexión
                 try:
                     await page.wait_for_timeout(2000)
                 except Exception:
                     break
+
+    # ── Fallback: fetch + setContent cuando goto falla (ERR_ABORTED) ──
+    if navigation_error and "ERR_ABORTED" in navigation_error and not last_dd:
+        try:
+            html = await _fetch_html_via_http(url, timeout_ms)
+            # Inyectar <base> para que URLs relativas resuelvan contra la URL real
+            base_tag = f'<base href="{url}">'
+            if "<head>" in html:
+                html = html.replace("<head>", f"<head>{base_tag}", 1)
+            else:
+                html = f"<head>{base_tag}</head>{html}"
+
+            await page.goto("about:blank", timeout=timeout_ms)
+            await page.setContent(html, wait_until="domcontentloaded", timeout=timeout_ms)
+            await page.wait_for_timeout(wait_after * 1000)
+
+            last_dd = await extract_digital_data(page)
+            last_title = await extract_title(page)
+            if last_dd:
+                navigation_error = ""
+                logging.info("Recuperado via fetch+setContent: %s", url[:80])
+            else:
+                logging.debug("fetch+setContent no produjo digitalData: %s", url[:80])
+        except Exception as e2:
+            logging.debug("fetch+setContent falló: %s", e2)
 
     # Parsear beacons
     extra_count = 0
@@ -202,6 +270,8 @@ async def process_url(
         "url": url, "row": row,
         "page_name": _page_name_from_url(url),
         "digitaldata": last_dd,
+        "digitaldata_auto": last_dd,   # always the auto-extracted value
+        "digitaldata_manual": None,     # set by cache injection only
         "raw_beacons": all_beacons,
         "aa_parsed": parsed_aa[0] if parsed_aa else None,
         "extra_beacons": extra_aa,
@@ -294,8 +364,16 @@ async def amain() -> None:
             viewport={"width": 1920, "height": 1080},
             ignore_https_errors=True if args.proxy else False,
         )
-        context.set_default_timeout(args.timeout * 1000 if args.timeout else 35000)
+        context.set_default_timeout(args.timeout * 1000 if args.timeout else 60000)
         await context.route("**/*", lambda route, req: route_beacons(route, req))
+
+        # Parche anti-detección: oculta navigator.webdriver y limpia otras huellas
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['es-PR', 'en-US'] });
+            window.chrome = { runtime: {} };
+        """)
 
         # ── Crear process_func que cada worker usa para procesar una URL ──
         semaphore = asyncio.Semaphore(args.workers or 3)
@@ -311,6 +389,9 @@ async def amain() -> None:
                     cached = dict(cached)
                     cached["row"] = row
                     cached["_from_cache"] = True
+                    # Si el cache tiene digitaldata_manual, preservarlo
+                    if "digitaldata_manual" not in cached:
+                        cached["digitaldata_manual"] = cached.get("digitaldata")
                     logging.debug("Cache hit: %s", url[:80])
                     return cached
 

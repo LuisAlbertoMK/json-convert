@@ -33,6 +33,9 @@ _HAS_ANSI = (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()) or bool(os.e
 if sys.platform == "win32":
     _HAS_ANSI = True  # Windows 10+ supports ANSI natively
 
+# -- Non-interactive mode flag (set by --run) --
+_NON_INTERACTIVE = False
+
 
 def _c(code: str, text: str) -> str:
     """Wrap text in ANSI code."""
@@ -65,6 +68,9 @@ def header(title: str) -> None:
 
 def ask_int(prompt: str, min_v: int, max_v: int, default: int | None = None) -> int:
     """Pide un numero, con default opcional."""
+    # Modo no-interactivo: retornar default o min_v
+    if _NON_INTERACTIVE:
+        return default if default is not None else min_v
     while True:
         raw = input(prompt).strip()
         if not raw and default is not None:
@@ -83,6 +89,9 @@ def ask_int(prompt: str, min_v: int, max_v: int, default: int | None = None) -> 
 
 def confirm(prompt: str, default: bool = True) -> bool:
     """Confirmacion SI/NO."""
+    # Modo no-interactivo: retornar default
+    if _NON_INTERACTIVE:
+        return default
     hint = " [Y/n]" if default else " [y/N]"
     while True:
         raw = input(prompt + hint + ": ").strip().lower()
@@ -156,7 +165,7 @@ def get_markets_from_urls() -> list[str]:
         return []
 
 
-def _count_urls(market: str = None, env: str = "preview") -> int:
+def _count_urls(market: str | None = None, env: str = "preview") -> int:
     """Cuenta URLs en urls.json (por mercado y entorno)."""
     urls_path = os.path.join(BASE_DIR, "urls.json")
     if not os.path.exists(urls_path):
@@ -337,7 +346,7 @@ def op_auditar(non_interactive: bool = False) -> None:
     print(_c("green", "\n  [OK] Auditoria finalizada."))
 
 
-def op_postprocesar() -> None:
+def op_postprocesar(non_interactive: bool = False) -> None:
     """Opcion 3: Solo post-procesar (extract_aa)."""
     header("POST-PROCESO - extract_aa.py")
 
@@ -407,7 +416,7 @@ def op_reporte(non_interactive: bool = False) -> None:
         print(_c("red", "\n  [ERROR] Fallo la generacion del reporte."))
 
 
-def op_catalogo() -> None:
+def op_catalogo(non_interactive: bool = False) -> None:
     """Opcion 7: Generar catalog de migracion."""
     header("CATALOGO DE MIGRACION - generate_migration_catalog.py")
 
@@ -842,7 +851,7 @@ def run_option(opt: int, non_interactive: bool = False) -> bool:
     elif opt == 2:
         op_auditar(non_interactive=non_interactive)
     elif opt == 3:
-        op_postprocesar()
+        op_postprocesar(non_interactive=non_interactive)
     elif opt == 4:
         op_reporte(non_interactive=non_interactive)
     elif opt == 5:
@@ -850,7 +859,7 @@ def run_option(opt: int, non_interactive: bool = False) -> bool:
     elif opt == 6:
         op_ver_resultados()
     elif opt == 7:
-        op_catalogo()
+        op_catalogo(non_interactive=non_interactive)
     elif opt == 8:
         op_prune()
     elif opt == 9:
@@ -864,7 +873,8 @@ def run_option(opt: int, non_interactive: bool = False) -> bool:
     if elapsed > 2:
         print("  (" + _c("dim", str(int(elapsed)) + "s") + ")")
     print()
-    input(_c("dim", "  Presiona Enter para volver al menu..."))
+    if not _NON_INTERACTIVE:
+        input(_c("dim", "  Presiona Enter para volver al menu..."))
     return True
 
 
@@ -889,23 +899,22 @@ if __name__ == "__main__":
         print("        No se encontraron extract_browser.py, extract_aa.py o run.ps1")
         sys.exit(1)
 
-    if sys.version_info < (3, 9):
-        print(_c("red", "[ERROR] Python 3.9+ requerido"))
+    if sys.version_info < (3, 10):
+        print(_c("red", "[ERROR] Python 3.10+ requerido"))
         sys.exit(1)
 
     # Modo directo --run
     if args.run:
         opt_map = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8,
-                   "0": 0, "auto": 1}
+                   "9": 9, "0": 0, "auto": 1}
         opt = opt_map.get(args.run, -1)
         if opt < 0:
             print(_c("red", "[ERROR] Opcion invalida: " + args.run))
-            print("  Valores validos: 1-8, 0, 'auto'")
+            print("  Valores validos: 1-9, 0, 'auto'")
             sys.exit(1)
 
-        # Modo no-interactivo: auto-confirm sin preguntar mercado
-        _old_input = input
-        input = lambda prompt="": "y"
+        # Modo no-interactivo: respuestas automaticas
+        _NON_INTERACTIVE = True
 
         run_option(opt, non_interactive=True)
         sys.exit(0)

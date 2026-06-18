@@ -1,8 +1,8 @@
 """
 prune_excel_columns.py — Elimina columnas inútiles de Excel generados.
 
-Actualmente elimina:
-  - Col 3 ("digitaldata manual") — siempre vacía, nunca se usa
+Actualmente no elimina ninguna columna (todas son útiles).
+Se mantiene el script como infraestructura para futuras limpiezas.
 
 Uso:
   python prune_excel_columns.py                    # limpia todos los market/ y raíz
@@ -23,8 +23,10 @@ except ImportError:
     sys.exit(1)
 
 # Columnas a eliminar: (posicion, nombre)
+# Ahora todas las columnas tienen uso real:
+#   C = digitaldata (manual), D = digitaldata (automatica), E = AA, F = AA struct, G = metadata
 DEAD_COLS = [
-    (3, "digitaldata (manual)"),  # siempre vacía
+    # (3, "digitaldata (manual)"),  # ya no es muerta — columna activa
 ]
 
 

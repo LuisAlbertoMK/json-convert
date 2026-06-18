@@ -110,18 +110,30 @@ def parse_meta_col(val: str) -> dict:
 def determine_status(col_e: str, col_d: str, meta: dict) -> tuple[str, str, int]:
     """Determina si una URL está funcionando.
     
+    El error real está en la columna AA (col_e = col 4 del Excel) como JSON
+    con campos "code" y "error". La metadata (col 6) solo tiene score.
+    
     Returns:
         (estado: "OK"|"FALLO"|"SIN_DATOS", detalle_error: str, score: int)
     """
     score = meta.get("score", 0)
-    error_code = meta.get("code", "")
-    error_msg = meta.get("error", "")
 
-    # Error explícito en metadata
+    # 1. Parsear col_e (AA analytics) como JSON — ahí está el error real
+    aa_data: dict = {}
+    if col_e and isinstance(col_e, str) and col_e.strip().startswith("{"):
+        try:
+            aa_data = json.loads(col_e)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    error_code = aa_data.get("code", "") or meta.get("code", "")
+    error_msg = aa_data.get("error", "") or meta.get("error", "")
+
+    # Error explícito desde AA o metadata
     if error_code in ERROR_STATES:
         return ("FALLO", error_msg or error_code, score)
 
-    # Col E empieza con ( → error textual
+    # Col E empieza con ( → error textual legacy
     if col_e and isinstance(col_e, str) and col_e.startswith("("):
         detail = col_e.strip("()")
         return ("FALLO", detail, score)
@@ -162,8 +174,25 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
             if hval:
                 headers[c] = str(hval).strip().lower()
 
+        # Mapa header → columna (backwards compat: old=6 cols, new=7 cols)
+        def _hc(key: str, fallback: int) -> int:
+            for c, h in headers.items():
+                if key in h:
+                    return c
+            return fallback
+
+        dd_manual_col = _hc("digitaldata (manual)", 3)
+        dd_auto_col = _hc("digitaldata (automatica)", 3)
+        aa_auto_col = _hc("aa analytics (automatico)", 4)
+        aa_struct_col = _hc("aa analytics (estructurado)", 5)
+        meta_col = _hc("metadata / extra beacons", 6)
+
         for row in range(2, ws.max_row + 1):
+            # Intentar URL desde col B; si está vacía, extraer de metadata
             url = ws.cell(row, 2).value
+            if not url:
+                meta_temp = parse_meta_col(str(ws.cell(row, meta_col).value or ""))
+                url = meta_temp.get("url", "")
             if not url:
                 continue
             url = str(url).strip()
@@ -173,22 +202,30 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
                 continue
 
             nombre = ws.cell(row, 1).value or ""
-            col_d = ws.cell(row, 3).value  # digitaldata automatica
-            col_e = ws.cell(row, 4).value  # AA analytics
-            col_f = ws.cell(row, 5).value  # AA estructurado
-            col_g = ws.cell(row, 6).value  # metadata
+            col_dd = ws.cell(row, dd_auto_col).value  # digitaldata automatica
+            col_aa = ws.cell(row, aa_auto_col).value  # AA analytics
 
-            meta = parse_meta_col(str(col_g) if col_g else "")
+            meta = parse_meta_col(str(ws.cell(row, meta_col).value or ""))
             estado, detalle, score = determine_status(
-                str(col_e) if col_e else "",
-                str(col_d) if col_d else "",
+                str(col_aa) if col_aa else "",
+                str(col_dd) if col_dd else "",
                 meta,
             )
 
-            # Detectar si tiene digitaldata
+            # Detectar si tiene digitaldata (cualquier fuente: manual o auto)
+            col_dd_manual = ws.cell(row, dd_manual_col).value
             dd_status = "OK"
-            if not col_d or "(no digitaldata)" in str(col_d):
+            has_any_dd = (col_dd and "(no digitaldata)" not in str(col_dd)) or \
+                         (col_dd_manual and "(no digitaldata)" not in str(col_dd_manual))
+            if not has_any_dd:
                 dd_status = "NO"
+
+            # Si no hay nombre en col A, derivarlo de la URL
+            if not nombre:
+                try:
+                    nombre = url.rstrip("/").split("/")[-1].replace(".html", "").replace("-", " ").title()[:80]
+                except Exception:
+                    nombre = "(sin nombre)"
 
             pages[url] = {
                 "nombre": str(nombre).strip() if nombre else "(sin nombre)",
@@ -213,17 +250,25 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
         try:
             wb2 = openpyxl.load_workbook(companion, data_only=True)
             ws2 = wb2.active
+            # Header-aware columns for companion files (may be old or new format)
+            h2 = {}
+            for c in range(1, ws2.max_column + 1):
+                hv = ws2.cell(1, c).value
+                if hv:
+                    h2[str(hv).strip().lower()] = c
+            aa_col = h2.get("aa analytics (automatico)", 4)
+            meta2_col = h2.get("metadata / extra beacons", 6)
             for row in range(2, ws2.max_row + 1):
                 url = ws2.cell(row, 2).value
                 if not url or str(url).strip() in pages:
                     continue
                 url = str(url).strip()
                 nombre = ws2.cell(row, 1).value or ""
-                col_e = ws2.cell(row, 4).value
-                col_g = ws2.cell(row, 6).value
-                meta = parse_meta_col(str(col_g) if col_g else "")
+                col_aa = ws2.cell(row, aa_col).value
+                col_meta = ws2.cell(row, meta2_col).value
+                meta = parse_meta_col(str(col_meta) if col_meta else "")
                 estado, detalle, score = determine_status(
-                    str(col_e) if col_e else "", "", meta
+                    str(col_aa) if col_aa else "", "", meta
                 )
                 pages[url] = {
                     "nombre": str(nombre).strip() if nombre else "(sin nombre)",

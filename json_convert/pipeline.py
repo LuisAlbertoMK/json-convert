@@ -65,28 +65,49 @@ async def write_result(
     """
     async with excel_lock:
         row = result["row"]
+        url = result.get("url", "")
         n_beacons = 1 + len(result.get("extra_beacons", []))
 
-        # digitaldata → col C
-        dd_val = result.get("digitaldata")
-        if dd_val is not None:
-            _write_cell(ws, row, 3, _pretty_json(dd_val))
-            metrics["ok_dd"] += 1
+        # nombre pagina → col A
+        if url:
+            try:
+                parts = url.rstrip("/").split("/")
+                page_name = parts[-1].replace(".html", "").replace("-", " ").title()
+            except Exception:
+                page_name = url[:60]
+            _write_cell(ws, row, 1, page_name)
+
+        # URL → col B
+        if url:
+            _write_cell(ws, row, 2, url)
+
+        # digitaldata (manual) → col C
+        manual_dd = result.get("digitaldata_manual") or result.get("digitaldata")
+        if manual_dd is not None:
+            _write_cell(ws, row, 3, _pretty_json(manual_dd))
         else:
             _write_cell(ws, row, 3, _pretty_json({"error": "no digitaldata", "code": "DD_MISSING"}))
 
-        # AA → col D
+        # digitaldata (automatica) → col D
+        auto_dd = result.get("digitaldata_auto") or result.get("digitaldata")
+        if auto_dd is not None:
+            _write_cell(ws, row, 4, _pretty_json(auto_dd))
+            metrics["ok_dd"] += 1
+        else:
+            _write_cell(ws, row, 4, _pretty_json({"error": "no digitaldata", "code": "DD_MISSING"}))
+
+        # AA analytics (automatico) → col E
         if result.get("aa_parsed"):
-            _write_cell(ws, row, 4, _pretty_json(result["aa_parsed"]))
+            _write_cell(ws, row, 5, _pretty_json(result["aa_parsed"]))
             metrics["ok_aa"] += 1
         else:
             err_code = _error_code_from_detail(result.get("error", "no AA"))
-            _write_cell(ws, row, 4, _pretty_json({"error": result.get("error", "no AA"), "code": err_code}))
+            _write_cell(ws, row, 5, _pretty_json({"error": result.get("error", "no AA"), "code": err_code}))
 
         # Score por URL (0-100)
         url_score = compute_url_score(result)
 
-        # Metadata → col F
+        # Metadata → col G
         meta = {
             "score": url_score,
             "status": result.get("status", 0),
@@ -100,7 +121,7 @@ async def write_result(
         }
         if result.get("extra_beacons"):
             meta["extra_beacons"] = result["extra_beacons"]
-        _write_cell(ws, row, 6, _pretty_json(meta))
+        _write_cell(ws, row, 7, _pretty_json(meta))
 
         if result.get("error") or not result["aa_parsed"]:
             metrics["errors"] += 1
