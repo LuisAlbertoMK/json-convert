@@ -346,34 +346,54 @@ async def amain() -> None:
 
     # ── Playwright ──
     async with async_playwright() as pw:
-        # Usar Chrome real (evita bloqueo Akamai WAF); fallback a bundled Chromium
-        launch_kwargs = dict(
+        browser_type = args.browser or "chromium"
+        launch_kwargs: dict = dict(
             headless=not args.headed,
-            args=["--disable-blink-features=AutomationControlled"],
             proxy={"server": args.proxy} if args.proxy else None,
         )
-        try:
-            browser = await pw.chromium.launch(channel="chrome", **launch_kwargs)
-        except Exception:
-            logging.info("Chrome no disponible, usando Chromium bundled")
-            browser = await pw.chromium.launch(**launch_kwargs)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                       "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-            locale="es_PR" if "es" in url_source else "en_US",
+
+        if browser_type == "firefox":
+            print(f"  Usando Firefox ({browser_type})")
+            browser = await pw.firefox.launch(**launch_kwargs)
+        else:
+            launch_kwargs["args"] = ["--disable-blink-features=AutomationControlled"]
+            try:
+                browser = await pw.chromium.launch(channel="chrome", **launch_kwargs)
+            except Exception:
+                logging.info("Chrome no disponible, usando Chromium bundled")
+                browser = await pw.chromium.launch(**launch_kwargs)
+
+        # ── Context ──
+        ua_firefox = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:150.0) "
+            "Gecko/20100101 Firefox/150.0"
+        )
+        ua_chromium = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+        )
+        context_kwargs: dict = dict(
+            user_agent=ua_firefox if browser_type == "firefox" else ua_chromium,
+            locale="es-PR" if "es" in url_source else "en-US",
             viewport={"width": 1920, "height": 1080},
             ignore_https_errors=True if args.proxy else False,
         )
+        context = await browser.new_context(**context_kwargs)
         context.set_default_timeout(args.timeout * 1000 if args.timeout else 60000)
         await context.route("**/*", lambda route, req: route_beacons(route, req))
 
-        # Parche anti-detección: oculta navigator.webdriver y limpia otras huellas
-        await context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
-            Object.defineProperty(navigator, 'languages', { get: () => ['es-PR', 'en-US'] });
-            window.chrome = { runtime: {} };
-        """)
+        # Parche anti-detección (distinto por browser)
+        if browser_type == "firefox":
+            await context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            """)
+        else:
+            await context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+                Object.defineProperty(navigator, 'languages', { get: () => ['es-PR', 'en-US'] });
+                window.chrome = { runtime: {} };
+            """)
 
         # ── Crear process_func que cada worker usa para procesar una URL ──
         semaphore = asyncio.Semaphore(args.workers or 3)
@@ -489,6 +509,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cache-ttl", type=int, default=86400,
                    help="TTL de caché en segundos (default: 86400 = 24h)")
     p.add_argument("--clear-cache", action="store_true", help="Limpiar caché y salir")
+    p.add_argument("--browser", default="chromium", choices=("chromium", "firefox"),
+                   help="Browser engine: chromium (default) o firefox")
     return p
 
 

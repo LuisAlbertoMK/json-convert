@@ -87,8 +87,39 @@ last_dd = await extract_digital_data(page)
 
 ---
 
+## Resultado: Firefox TEST ✅
+
+**Firefox NO sufre ERR_ABORTED en Ford all-vehicles.**
+
+```
+>>> https://www.ford.com.pr/en/all-vehicles/
+   [OK]  | keys: version, _il, _in, _c, F...
+   title: All Vehicles | Showroom | Ford Puerto Rico
+```
+
+Firefox (Gecko engine) no tiene el mismo bug de abort de navegación que Chromium. La URL problemática se cargó sin errores y digitalData se extrajo correctamente.
+
+### Implementado: `--browser {chromium|firefox}`
+
+Flag CLI agregado a `extract_browser.py`:
+
+```bash
+# Default: Chromium (mismo comportamiento que antes)
+python extract_browser.py --urls urls.json
+
+# Firefox: evita ERR_ABORTED en URLs problemáticas
+python extract_browser.py --urls urls.json --browser firefox
+```
+
+Firefox se lanza con:
+- User-Agent Firefox 150.0 (`Mozilla/5.0 ... Firefox/150.0`)
+- Anti-detección minimalista (solo `navigator.webdriver = undefined`)
+- Sin `--disable-blink-features=AutomationControlled` (no existe en Gecko)
+
+Chromium mantiene su lógica original: Chrome real → fallback a Chromium bundled.
+
 ## Próximos Pasos
 
-1. **Probar Firefox** como browser alternativo (diferente engine, diferente comportamiento con páginas que abortan)
-2. Evaluar si conviene agregar `--browser firefox` como flag opcional
-3. Si Firefox funciona consistentemente, considerar migrar el default
+1. ✅ ~~Probar Firefox~~ — **Funciona. No sufre ERR_ABORTED.**
+2. ✅ ~~Flag `--browser`~~ — **Implementado.**
+3. Evaluar si Firefox como default es viable (performance, estabilidad, memoria)
