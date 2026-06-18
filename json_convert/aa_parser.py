@@ -21,7 +21,7 @@ AA_DOMAINS = [
 # Nombres de variables de data layer a probar en el navegador
 DATA_LAYER_NAMES = [
     "window.digitalData", "window.digitaldata", "window.dataLayer",
-    "window.digital_data", "window.utag_data",
+    "window.digital_data", "window.utag_data", "window.s",
 ]
 
 
@@ -151,15 +151,62 @@ async def extract_s_object(page: object) -> dict | None:
 
 
 async def extract_digital_data(page: object) -> dict | None:
-    """Extrae data layer probando varios nombres."""
+    """Extrae data layer probando varios nombres con logging detallado."""
     for var_name in DATA_LAYER_NAMES:
         try:
-            dd = await page.evaluate(var_name)
+            dd = await page.evaluate(f"(() => {{ try {{ const v = {var_name}; return v !== null && v !== undefined ? v : null; }} catch(e) {{ return null; }} }})()")
             if dd and isinstance(dd, dict) and len(dd) > 0:
+                keys = list(dd.keys())[:6]
+                logging.info("data layer encontrado en '%s' keys=%s", var_name, keys)
                 return dd
+            elif dd is None:
+                logging.debug("data layer '%s' → null/undefined (no existe en la pagina)", var_name)
+            else:
+                tipo = type(dd).__name__
+                logging.debug("data layer '%s' → %s (no es dict: %s)", var_name, repr(dd)[:80], tipo)
         except Exception as e:
             logging.debug("data layer '%s' failed: %s", var_name, e)
     return None
+
+
+async def debug_dump_available_globals(page: object) -> None:
+    """Dumpea TODAS las variables globales del window para debug.
+    Solo se ejecuta en modo verbose. Busca específicamente objetos
+    que parezcan data layers."""
+    try:
+        js = """
+        (() => {
+            const candidates = [];
+            for (const key of Object.keys(window)) {
+                try {
+                    const val = window[key];
+                    if (val && typeof val === 'object' && !(val instanceof Node) && !(val instanceof Window)) {
+                        const keys = Object.keys(val).slice(0, 8);
+                        const typeStr = val.constructor ? val.constructor.name : 'Object';
+                        candidates.push({key, type: typeStr, sample_keys: keys, len: keys.length});
+                    }
+                } catch(e) {}
+            }
+            candidates.sort((a, b) => b.len - a.len);
+            return candidates.slice(0, 20);
+        })()
+        """
+        globals_list = await page.evaluate(js)
+        if globals_list:
+            logging.info("Global objects disponibles (%d encontrados):", len(globals_list))
+            for g in globals_list:
+                logging.info("  %s → %s [%s] %s",
+                             g.get("key", "?"),
+                             g.get("type", "?"),
+                             g.get("sample_keys", []),
+                             "(data layer candidate)" if any(
+                                 dl in g.get("key", "").lower()
+                                 for dl in ["digital", "data", "layer", "utag", "analyt"]
+                             ) else "")
+        else:
+            logging.debug("No se encontraron objetos globales (pagina sin JS?)")
+    except Exception as e:
+        logging.debug("debug_dump_globals falló: %s", e)
 
 
 async def extract_title(page: object) -> str:

@@ -15,7 +15,7 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import openpyxl
 from playwright.async_api import TimeoutError as PwTimeout
@@ -46,6 +46,7 @@ from json_convert import (  # noqa: F401 — re-export for backwards compat
     classify_errors,
     compute_score,
     compute_url_score,
+    debug_dump_available_globals,
     extract_digital_data,
     extract_s_object,
     extract_title,
@@ -179,6 +180,9 @@ async def process_url(
 
             last_title = await extract_title(page)
             last_dd = await extract_digital_data(page)
+            # En verbose, dumpear variables globales si no se encontró digitalData
+            if last_dd is None and logging.getLogger().isEnabledFor(logging.DEBUG):
+                await debug_dump_available_globals(page)
             last_s = await extract_s_object(page)
             await try_dismiss_cookie_consent(page)
             await page.wait_for_timeout(1000)
@@ -248,6 +252,8 @@ async def process_url(
                 logging.info("Recuperado via fetch+setContent: %s", url[:80])
             else:
                 logging.debug("fetch+setContent no produjo digitalData: %s", url[:80])
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    await debug_dump_available_globals(page)
         except Exception as e2:
             logging.debug("fetch+setContent falló: %s", e2)
 
@@ -317,7 +323,8 @@ async def amain() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
-    _setup_logging(args.verbose)
+    log_path = _setup_logging(args.verbose, args.log_file)
+    print(f"\n  Log: {log_path}")
 
     # ── Caché de navegación ──
     cache = UrlCache(ttl=args.cache_ttl) if not args.no_cache else None
@@ -514,10 +521,32 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _setup_logging(verbose: bool) -> None:
+def _setup_logging(verbose: bool, log_file: str | None = None) -> str:
+    """Configura logging a consola + archivo.
+
+    Si no se pasa log_file explícito, genera uno automático en logs/
+    con timestamp. Retorna la ruta del archivo de log.
+    """
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(level=level, format="%(asctime)s [%(levelname)s] %(message)s",
-                        datefmt="%H:%M:%S")
+    log_path = log_file or _auto_log_path()
+    os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
+
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler(log_path, encoding="utf-8"),
+        ],
+    )
+    return log_path
+
+
+def _auto_log_path() -> str:
+    """Genera ruta tipo logs/audit-2026-06-18_171500.log."""
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    return os.path.join("logs", f"audit-{ts}.log")
 
 
 def _resolve_urls(args: argparse.Namespace) -> tuple[list[tuple[int, str]], str]:
