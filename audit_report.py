@@ -107,18 +107,50 @@ def parse_meta_col(val: str) -> dict:
         return {}
 
 
+def _has_valid_digitaldata(col_d: str) -> bool:
+    """Chequea si col_d contiene digitalData real (no error/empty)."""
+    if not col_d or not isinstance(col_d, str) or col_d.strip() in ("", "-", "N/A"):
+        return False
+    if "(no digitaldata)" in col_d:
+        return False
+    try:
+        dd = json.loads(col_d)
+        if isinstance(dd, dict) and dd.get("error") == "no digitaldata":
+            return False
+        return True  # tiene JSON válido con datos
+    except (json.JSONDecodeError, ValueError):
+        return False
+
+
+def _col_has_real_aa_data(raw: str) -> bool:
+    """Chequea si col_aa contiene datos AA reales (no error/empty)."""
+    if not raw or raw.strip() in ("", "-", "N/A"):
+        return False
+    if raw.strip().startswith("("):
+        return False  # error textual legacy
+    if raw.strip().startswith("{"):
+        try:
+            aa = json.loads(raw)
+            code = aa.get("code", "")
+            return bool(code) and code not in ERROR_STATES
+        except (json.JSONDecodeError, ValueError):
+            return False
+    return True  # texto plano sin JSON ni error
+
+
 def determine_status(col_e: str, col_d: str, meta: dict) -> tuple[str, str, int]:
     """Determina si una URL está funcionando.
     
     El error real está en la columna AA (col_e = col 4 del Excel) como JSON
     con campos "code" y "error". La metadata (col 6) solo tiene score.
+    Si no hay AA pero col_d tiene digitalData válido, también cuenta como OK.
     
     Returns:
         (estado: "OK"|"FALLO"|"SIN_DATOS", detalle_error: str, score: int)
     """
     score = meta.get("score", 0)
 
-    # 1. Parsear col_e (AA analytics) como JSON — ahí está el error real
+    # 1. Parsear col_e (AA analytics) como JSON
     aa_data: dict = {}
     if col_e and isinstance(col_e, str) and col_e.strip().startswith("{"):
         try:
@@ -128,24 +160,31 @@ def determine_status(col_e: str, col_d: str, meta: dict) -> tuple[str, str, int]
 
     error_code = aa_data.get("code", "") or meta.get("code", "")
     error_msg = aa_data.get("error", "") or meta.get("error", "")
+    tiene_dd = _has_valid_digitaldata(col_d)
 
-    # Error explícito desde AA o metadata
-    if error_code in ERROR_STATES:
-        return ("FALLO", error_msg or error_code, score)
-
-    # Col E empieza con ( → error textual legacy
-    if col_e and isinstance(col_e, str) and col_e.startswith("("):
+    # Col E empieza con ( → error textual legacy (ej: "(404)")
+    if col_e and isinstance(col_e, str) and col_e.strip().startswith("("):
+        # Si tiene digitalData, rescatar
+        if tiene_dd:
+            return ("OK", "Solo digitalData (sin AA)", score)
         detail = col_e.strip("()")
         return ("FALLO", detail, score)
 
-    # Sin col E ni error → sin datos
+    # Tiene error_code de AA → ver si digitalData lo rescata
+    if error_code in ERROR_STATES:
+        if tiene_dd:
+            return ("OK", "Solo digitalData (sin AA)", score)
+        return ("FALLO", error_msg or error_code, score)
+
+    # Sin col E → verificar digitalData en col D
     if not col_e or (isinstance(col_e, str) and col_e.strip() in ("", "-", "N/A")):
-        # Ver si col D tiene digitaldata
+        if tiene_dd:
+            return ("OK", "Solo digitalData (sin AA)", score)
         if col_d and isinstance(col_d, str) and "(no digitaldata)" in col_d:
             return ("SIN_DATOS", "Sin digitalData ni AA", score)
         return ("SIN_DATOS", "Sin datos de AA", score)
 
-    # Tiene datos en col E → OK
+    # Tiene datos en col E sin error → OK (tiene AA)
     return ("OK", "", score)
 
 
@@ -227,19 +266,23 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
                 except Exception:
                     nombre = "(sin nombre)"
 
-            pages[url] = {
-                "nombre": str(nombre).strip() if nombre else "(sin nombre)",
-                "url": url,
-                "mercado": market,
-                "estado": estado,
-                "detalle": detalle,
-                "fecha": sheet_name,
-                "score": score,
-                "digitaldata": dd_status,
-                "hoja": sheet_name,
-            }
-
-    wb.close()
+                # tiene_aa: col_aa tiene datos AA reales (no error codes)
+                tiene_aa = _col_has_real_aa_data(str(col_aa) if col_aa else "")
+                tiene_dd = _has_valid_digitaldata(str(col_dd) if col_dd else "")
+                pages[url] = {
+                    "nombre": str(nombre).strip() if nombre else "(sin nombre)",
+                    "url": url,
+                    "mercado": market,
+                    "estado": estado,
+                    "detalle": detalle,
+                    "fecha": "",
+                    "score": score,
+                    "digitaldata": "?",  # lo setea extract_aa.py después
+                    "hoja": sheet_name,
+                    "tiene_aa": tiene_aa,
+                    "tiene_dd": tiene_dd,
+                }
+            wb.close()
 
     # También leer sin_aa.xlsx / con_aa.xlsx del mismo directorio si existen
     base_dir = os.path.dirname(path)
@@ -270,6 +313,7 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
                 estado, detalle, score = determine_status(
                     str(col_aa) if col_aa else "", "", meta
                 )
+                tiene_aa = _col_has_real_aa_data(str(col_aa) if col_aa else "")
                 pages[url] = {
                     "nombre": str(nombre).strip() if nombre else "(sin nombre)",
                     "url": url,
@@ -280,6 +324,8 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
                     "score": score,
                     "digitaldata": "?",
                     "hoja": f"{suffix} ({sheet_name})",
+                    "tiene_aa": tiene_aa,
+                    "tiene_dd": False,  # companion files no tienen col D
                 }
             wb2.close()
         except Exception:
@@ -307,7 +353,7 @@ def write_report(failed: list[dict], all_sorted: list[dict], output_path: str):
     # ── Hoja 1: Resumen ──
     ws_summary = wb.active
     ws_summary.title = "Resumen"
-    ws_summary.cell(1, 1).value = "Reporte de Estado - Auditoria AA"
+    ws_summary.cell(1, 1).value = "Reporte de Estado - Auditoria de Data Layer"
     ws_summary.cell(1, 1).font = Font(bold=True, size=14)
     ws_summary.cell(2, 1).value = f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     ws_summary.cell(3, 1).value = ""
@@ -316,22 +362,35 @@ def write_report(failed: list[dict], all_sorted: list[dict], output_path: str):
     ok_count = sum(1 for p in all_sorted if p["estado"] == "OK")
     fail_count = len(failed)
     nodata_count = sum(1 for p in all_sorted if p["estado"] == "SIN_DATOS")
+    aa_count = sum(1 for p in all_sorted if p.get("tiene_aa", False))
+    dd_count = sum(1 for p in all_sorted if p.get("tiene_dd", False))
+    dd_only = ok_count - aa_count  # OK por digitalData pero sin AA
+    aa_and_dd = sum(1 for p in all_sorted if p.get("tiene_aa") and p.get("tiene_dd"))
+
+    def pct(n: int) -> str:
+        return f"{n} ({n / total * 100:.1f}%)" if total > 0 else "N/A"
 
     stats = [
         ("Total URLs auditadas", total),
-        ("Funcionando (OK)", ok_count),
-        ("Con fallos", fail_count),
-        ("Sin datos", nodata_count),
         ("", ""),
-        ("Tasa de exito", f"{ok_count / total * 100:.1f}%" if total > 0 else "N/A"),
+        ("Con AA analytics", pct(aa_count)),
+        ("Con digitalData", pct(dd_count)),
+        ("  Con AA + digitalData", pct(aa_and_dd)),
+        ("  Solo digitalData (sin AA)", pct(dd_only)),
+        ("", ""),
+        ("Sin AA ni digitalData", fail_count + nodata_count),
+        ("  Con fallos (error)", fail_count),
+        ("  Sin datos", nodata_count),
+        ("", ""),
+        ("Tasa de exito (AA o DD)", f"{ok_count / total * 100:.1f}%" if total > 0 else "N/A"),
     ]
     for i, (label, val) in enumerate(stats, start=5):
         ws_summary.cell(i, 1).value = label
         ws_summary.cell(i, 1).font = Font(bold=True)
         ws_summary.cell(i, 2).value = val
 
-    ws_summary.column_dimensions["A"].width = 25
-    ws_summary.column_dimensions["B"].width = 15
+    ws_summary.column_dimensions["A"].width = 30
+    ws_summary.column_dimensions["B"].width = 22
 
     # ── Hoja 2: Fallos ──
     _write_data_sheet(wb, "Fallos", failed, FAIL_FILL, "FALLO")
@@ -553,6 +612,11 @@ Ejemplos:
     ok_count = sum(1 for p in all_pages if p["estado"] == "OK")
     fail_count = len(failed)
     nodata_count = sum(1 for p in all_pages if p["estado"] == "SIN_DATOS")
+    aa_count = sum(1 for p in all_pages if p.get("tiene_aa", False))
+    dd_count = sum(1 for p in all_pages if p.get("tiene_dd", False))
+
+    def pct(n: int) -> str:
+        return f"{n} ({n / total * 100:.1f}%)" if total > 0 else "N/A"
 
     print(f"{'='*55}")
     print(f"  REPORTE GLOBAL:   {output_path}")
@@ -561,8 +625,9 @@ Ejemplos:
         print(f"  {m}/reporte-auditoria.xlsx")
     print(f"{'='*55}")
     print(f"  Total URLs:       {total}")
-    print(f"  Funcionando (OK): {ok_count}")
-    print(f"  Con fallos:       {fail_count}")
+    print(f"  Con AA analytics: {pct(aa_count)}")
+    print(f"  Con digitalData:  {pct(dd_count)}")
+    print(f"  Fallos:           {fail_count}")
     print(f"  Sin datos:        {nodata_count}")
     if total > 0:
         print(f"  Tasa de éxito:    {ok_count / total * 100:.1f}%")

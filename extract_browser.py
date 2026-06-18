@@ -166,15 +166,19 @@ async def process_url(
             #   2+: load (espera todo, para páginas lentas)
             _wait_strategies = ["domcontentloaded", "commit", "load"]
             _wait = _wait_strategies[min(attempt, len(_wait_strategies) - 1)]
-            async with page.context.expect_page(timeout=timeout_ms) as popup_info:
-                await page.goto(url, wait_until=_wait,
-                                timeout=timeout_ms)
-            try:
-                popup = await popup_info.value
-                await popup.close()
+            # Detectar popups via callback (evita el timeout fijo de expect_page)
+            popup_page = None
+            def _on_popup(p: object) -> None:
+                nonlocal popup_page
+                popup_page = p
+            page.on("popup", _on_popup)
+
+            await page.goto(url, wait_until=_wait, timeout=timeout_ms)
+
+            if popup_page:
+                await popup_page.close()
                 logging.debug("Popup cerrado: %s", url)
-            except Exception:
-                pass
+            page.remove_listener("popup", _on_popup)
 
             await page.wait_for_timeout(wait_after * 1000)
 
@@ -385,22 +389,9 @@ async def amain() -> None:
             viewport={"width": 1920, "height": 1080},
             ignore_https_errors=True if args.proxy else False,
         )
-        context = await browser.new_context(**context_kwargs)
-        context.set_default_timeout(args.timeout * 1000 if args.timeout else 60000)
-        await context.route("**/*", lambda route, req: route_beacons(route, req))
-
-        # Parche anti-detección (distinto por browser)
-        if browser_type == "firefox":
-            await context.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            """)
-        else:
-            await context.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
-                Object.defineProperty(navigator, 'languages', { get: () => ['es-PR', 'en-US'] });
-                window.chrome = { runtime: {} };
-            """)
+        # NO compartir contexto — cada página crea el suyo para evitar
+        # "Target page, context or browser has been closed" en cascada.
+        context = None
 
         # ── Crear process_func que cada worker usa para procesar una URL ──
         semaphore = asyncio.Semaphore(args.workers or 3)
@@ -423,7 +414,23 @@ async def amain() -> None:
                     return cached
 
             async with semaphore:
-                page = await context.new_page()
+                # Contexto propio por página para evitar "Target closed" en cascada.
+                ctx = await browser.new_context(**context_kwargs)
+                ctx.set_default_timeout(args.timeout * 1000 if args.timeout else 60000)
+                await ctx.route("**/*", lambda route, req: route_beacons(route, req))
+                if browser_type == "firefox":
+                    await ctx.add_init_script("""
+                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                    """)
+                else:
+                    await ctx.add_init_script("""
+                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                        Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+                        Object.defineProperty(navigator, 'languages', { get: () => ['es-PR', 'en-US'] });
+                        window.chrome = { runtime: {} };
+                    """)
+                page = await ctx.new_page()
+
                 try:
                     beacons: list[str] = []
 
@@ -450,6 +457,10 @@ async def amain() -> None:
                     return result
                 finally:
                     await page.close()
+                    try:
+                        await ctx.close()
+                    except Exception:
+                        pass
 
         # ── Pipeline (procesa URLs + escribe Excel) ──
         results, errors_detail, metrics = await run_pipeline(
@@ -476,13 +487,13 @@ async def amain() -> None:
             update_vars_sheet(wb, audit_date, aa_rows)
 
         out = save_workbook(wb, output_path)
-        wb.close()
 
         split = getattr(args, "split_aa", False)
         if split and audit_date:
             output_dir = os.path.dirname(output_path) or "."
             split_aa_workbooks(wb, audit_date, output_dir)
 
+        wb.close()
         logging.info("Guardado: %s", out)
         _print_metrics(metrics, args, output_path)
 
@@ -540,6 +551,11 @@ def _setup_logging(verbose: bool, log_file: str | None = None) -> str:
             logging.FileHandler(log_path, encoding="utf-8"),
         ],
     )
+    # Forzar stdout a UTF-8 para evitar UnicodeEncodeError en Windows
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     return log_path
 
 

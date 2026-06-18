@@ -56,7 +56,30 @@ DATA_FILLS = {
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _pretty_json(obj: object) -> str:
-    return json.dumps(obj, indent=2, ensure_ascii=False)
+    try:
+        return json.dumps(obj, indent=2, ensure_ascii=False)
+    except (ValueError, TypeError, OverflowError):
+        # Fallback: safe serialize con str() para no-perder datos
+        return json.dumps(_safe_serialize(obj), indent=2, ensure_ascii=False)
+
+
+def _safe_serialize(obj: object, depth: int = 0) -> object:
+    """Convierte objetos con potenciales ciclos a tipos JSON-safe."""
+    if depth > 20:
+        return str(obj)[:200]
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            try:
+                out[str(k)] = _safe_serialize(v, depth + 1)
+            except Exception:
+                out[str(k)] = str(v)[:200]
+        return out
+    if isinstance(obj, (list, tuple)):
+        return [_safe_serialize(item, depth + 1) for item in obj[:50]]
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    return str(obj)[:200]
 
 
 def _set_col_widths(ws: object) -> None:
@@ -179,20 +202,44 @@ def apply_data_fills(ws: object) -> None:
 # SPLIT AA
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _has_digitaldata(col_d: object) -> bool:
+    """Chequea si col D tiene digitalData válido (no error/empty)."""
+    if not col_d or not isinstance(col_d, str) or col_d.strip() in ("", "-", "N/A"):
+        return False
+    if "(no digitaldata)" in col_d:
+        return False
+    try:
+        dd = json.loads(col_d)
+        if isinstance(dd, dict) and dd.get("error") == "no digitaldata":
+            return False
+        return True
+    except (json.JSONDecodeError, ValueError):
+        return False
+
+
+def _has_aa(col_e: object) -> bool:
+    """Chequea si col E tiene datos AA reales (no error)."""
+    if not col_e or not isinstance(col_e, str) or col_e.strip() in ("", "-", "N/A"):
+        return False
+    try:
+        parsed = json.loads(col_e)
+        return bool(isinstance(parsed, dict) and "solution" in parsed and "error" not in parsed)
+    except (json.JSONDecodeError, TypeError):
+        return False
+
+
 def split_aa_workbooks(wb: object, audit_date: str, output_dir: str) -> None:
-    """Crea con_aa.xlsx y sin_aa.xlsx a partir del sheet audit_date."""
+    """Crea con_aa.xlsx (tiene AA o digitalData) y sin_aa.xlsx (no tiene nada).
+    
+    Ahora considera AMBAS columnas: AA (col E) y digitalData (col D).
+    """
     ws = wb[audit_date]
     con_rows, sin_rows = [], []
     for row in range(2, ws.max_row + 1):
-        aa = ws.cell(row, 5).value  # col E = AA analytics (automatico)
-        has_aa = False
-        if aa and isinstance(aa, str):
-            try:
-                parsed = json.loads(aa)
-                has_aa = isinstance(parsed, dict) and "solution" in parsed and "error" not in parsed
-            except (json.JSONDecodeError, TypeError):
-                has_aa = False
-        if has_aa:
+        col_d = ws.cell(row, 4).value  # digitaldata (automatica)
+        col_e = ws.cell(row, 5).value  # AA analytics (automatico)
+        has_data = _has_aa(col_e) or _has_digitaldata(col_d)
+        if has_data:
             con_rows.append(row)
         else:
             sin_rows.append(row)

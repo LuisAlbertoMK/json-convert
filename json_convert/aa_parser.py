@@ -21,7 +21,7 @@ AA_DOMAINS = [
 # Nombres de variables de data layer a probar en el navegador
 DATA_LAYER_NAMES = [
     "window.digitalData", "window.digitaldata", "window.dataLayer",
-    "window.digital_data", "window.utag_data", "window.s",
+    "window.digital_data", "window.utag_data",
 ]
 
 
@@ -160,10 +160,10 @@ async def extract_digital_data(page: object) -> dict | None:
                 logging.info("data layer encontrado en '%s' keys=%s", var_name, keys)
                 return dd
             elif dd is None:
-                logging.debug("data layer '%s' → null/undefined (no existe en la pagina)", var_name)
+                logging.debug("data layer '%s' -> null/undefined (no existe en la pagina)", var_name)
             else:
                 tipo = type(dd).__name__
-                logging.debug("data layer '%s' → %s (no es dict: %s)", var_name, repr(dd)[:80], tipo)
+                logging.debug("data layer '%s' -> %s (no es dict: %s)", var_name, repr(dd)[:80], tipo)
         except Exception as e:
             logging.debug("data layer '%s' failed: %s", var_name, e)
     return None
@@ -195,7 +195,7 @@ async def debug_dump_available_globals(page: object) -> None:
         if globals_list:
             logging.info("Global objects disponibles (%d encontrados):", len(globals_list))
             for g in globals_list:
-                logging.info("  %s → %s [%s] %s",
+                logging.info("  %s -> %s [%s] %s",
                              g.get("key", "?"),
                              g.get("type", "?"),
                              g.get("sample_keys", []),
