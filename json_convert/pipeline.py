@@ -68,13 +68,9 @@ async def write_result(
         url = result.get("url", "")
         n_beacons = 1 + len(result.get("extra_beacons", []))
 
-        # nombre pagina → col A
-        if url:
-            try:
-                parts = url.rstrip("/").split("/")
-                page_name = parts[-1].replace(".html", "").replace("-", " ").title()
-            except Exception:
-                page_name = url[:60]
+        # nombre pagina → col A (ya viene calculado en result["page_name"])
+        page_name = result.get("page_name") or (url[:60] if url else "")
+        if page_name:
             _write_cell(ws, row, 1, page_name)
 
         # URL → col B
@@ -125,7 +121,10 @@ async def write_result(
 
         if result.get("error") or not result["aa_parsed"]:
             metrics["errors"] += 1
-            metrics["errores_detalle"].append({"row": row, "error": result.get("error", "no AA")})
+            err_msg = result.get("error", "no AA")
+            metrics["errores_detalle"].append({"row": row, "error": err_msg})
+            if result.get("error"):
+                logging.info("[URL %d] ERR: %s", row, err_msg)
 
         metrics["total_beacons"] += n_beacons
         metrics["times"].append(result["elapsed_s"])

@@ -27,3 +27,10 @@ urls.json
 .env
 .history/
 .menu-config.json
+
+# Scripts de diagnóstico / debugging
+_check_cols.py
+
+# Backups generados por save_workbook fallback
+*_browser*.xlsx
+*_browser*.bak

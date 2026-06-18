@@ -135,26 +135,10 @@ async def process_url(
     if err:
         return {"url": url, "row": row, "error": err}
 
-    all_beacons = []
     last_dd = None
     last_s = None
     last_title = ""
     navigation_error = ""
-    parsed_aa = []
-    extra_aa = []
-
-    async def _on_response(response: object) -> None:
-        if _shutdown_flag:
-            return
-        url_lower = response.url.lower()
-        if any(domain in url_lower for domain in AA_DOMAINS):
-            try:
-                await response.body()
-                beacon = response.url
-                if "?" in beacon and len(beacon) > 50:
-                    all_beacons.append(beacon)
-            except Exception:
-                pass
 
     for attempt in range(1 + max(0, max_retry)):
         if _shutdown_flag:
@@ -182,12 +166,19 @@ async def process_url(
 
             await page.wait_for_timeout(wait_after * 1000)
 
-            last_title = await extract_title(page)
-            last_dd = await extract_digital_data(page)
+            # Paralelizar extracciones independientes — ahorra ~2 RTT por URL
+            _extracted = await asyncio.gather(
+                extract_title(page),
+                extract_digital_data(page),
+                extract_s_object(page),
+                return_exceptions=True,
+            )
+            last_title = _extracted[0] if not isinstance(_extracted[0], Exception) else ""
+            last_dd = _extracted[1] if not isinstance(_extracted[1], Exception) else None
+            last_s = _extracted[2] if not isinstance(_extracted[2], Exception) else None
             # En verbose, dumpear variables globales si no se encontró digitalData
             if last_dd is None and logging.getLogger().isEnabledFor(logging.DEBUG):
                 await debug_dump_available_globals(page)
-            last_s = await extract_s_object(page)
             await try_dismiss_cookie_consent(page)
             await page.wait_for_timeout(1000)
 
@@ -197,7 +188,7 @@ async def process_url(
 
         except PwTimeout:
             navigation_error = "Timeout al navegar"
-            logging.debug("Timeout en intento %d: %s", attempt + 1, url)
+            logging.info("Timeout en intento %d: %s", attempt + 1, sanitize_url_for_log(url)[:60])
             if attempt < max_retry:
                 # ⚠ page puede estar cerrada si el browser perdió conexión
                 try:
@@ -206,11 +197,11 @@ async def process_url(
                     break
         except asyncio.CancelledError:
             navigation_error = "Tarea cancelada"
-            logging.debug("Cancelled en intento %d: %s", attempt + 1, url)
+            logging.info("Cancelled en intento %d: %s", attempt + 1, sanitize_url_for_log(url)[:60])
             raise  # No reintentar — propagar cancelación
         except Exception as e:
             navigation_error = f"Error al navegar: {e}"
-            logging.debug("Error en intento %d: %s", attempt + 1, e)
+            logging.info("Error en intento %d: %s", attempt + 1, sanitize_url_for_log(url)[:60])
 
             # ERR_ABORTED: página abortó navegación, pero puede tener DOM parcial
             if "ERR_ABORTED" in str(e):
@@ -261,39 +252,25 @@ async def process_url(
         except Exception as e2:
             logging.debug("fetch+setContent falló: %s", e2)
 
-    # Parsear beacons
-    extra_count = 0
-    for beacon in all_beacons:
-        if extra_count < 5:
-            try:
-                parsed = parse_aa_beacon(beacon, last_title)
-                if parsed.get("hit", {}).get("type") in ("pageView", None):
-                    parsed_aa.append(parsed)
-                else:
-                    extra_aa.append(parsed)
-                    extra_count += 1
-            except Exception:
-                continue
-
     elapsed = time.perf_counter() - start
     result = {
         "url": url, "row": row,
         "page_name": _page_name_from_url(url),
         "digitaldata": last_dd,
-        "digitaldata_auto": last_dd,   # always the auto-extracted value
-        "digitaldata_manual": None,     # set by cache injection only
-        "raw_beacons": all_beacons,
-        "aa_parsed": parsed_aa[0] if parsed_aa else None,
-        "extra_beacons": extra_aa,
+        "digitaldata_auto": last_dd,
+        "digitaldata_manual": None,
+        "raw_beacons": [],
+        "aa_parsed": None,
+        "extra_beacons": [],
         "metadata": {
             "title": last_title,
             "s_object": last_s,
             "elapsed_s": round(elapsed, 1),
-            "beacon_count": len(all_beacons),
+            "beacon_count": 0,
         },
         "elapsed_s": round(elapsed, 1),
-        "status": 0,  # página cargada, código HTTP no disponible con domcontentloaded
-        "aa_source": None,  # se actualiza en write_result si hay AA
+        "status": 0,
+        "aa_source": None,
         "title": last_title,
         "code": None,
         "retries_used": attempt,
@@ -410,7 +387,25 @@ async def amain() -> None:
                     # Si el cache tiene digitaldata_manual, preservarlo
                     if "digitaldata_manual" not in cached:
                         cached["digitaldata_manual"] = cached.get("digitaldata")
-                    logging.debug("Cache hit: %s", url[:80])
+                    # Parsear beacons del caché si existen pero no se parsearon antes
+                    _raw = cached.get("raw_beacons", [])
+                    if _raw and not cached.get("aa_parsed"):
+                        _parsed_aa = []
+                        _extra_aa = []
+                        for _b in _raw[:6]:
+                            try:
+                                _p = parse_aa_beacon(_b, cached.get("title", ""))
+                                if _p.get("hit", {}).get("type") in ("pageView", None):
+                                    _parsed_aa.append(_p)
+                                else:
+                                    _extra_aa.append(_p)
+                            except Exception:
+                                continue
+                        if _parsed_aa:
+                            cached["aa_parsed"] = _parsed_aa[0]
+                        if _extra_aa:
+                            cached["extra_beacons"] = _extra_aa
+                    logging.info("Cache hit: %s", url[:80])
                     return cached
 
             async with semaphore:
@@ -451,6 +446,22 @@ async def amain() -> None:
                         max_retry=args.max_retry or 1,
                     )
                     result["raw_beacons"] = beacons
+                    # Parsear beacons capturados → aa_parsed estructurado
+                    parsed_aa = []
+                    extra_aa = []
+                    for _b in beacons[:6]:
+                        try:
+                            _p = parse_aa_beacon(_b, result.get("title", ""))
+                            if _p.get("hit", {}).get("type") in ("pageView", None):
+                                parsed_aa.append(_p)
+                            else:
+                                extra_aa.append(_p)
+                        except Exception:
+                            continue
+                    if parsed_aa:
+                        result["aa_parsed"] = parsed_aa[0]
+                    if extra_aa:
+                        result["extra_beacons"] = extra_aa
                     # Guardar en caché (sin row específico ni elapsed)
                     if cache is not None:
                         cache.set(url, result)
@@ -459,8 +470,8 @@ async def amain() -> None:
                     await page.close()
                     try:
                         await ctx.close()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.debug("Error cerrando contexto de página: %s", e)
 
         # ── Pipeline (procesa URLs + escribe Excel) ──
         results, errors_detail, metrics = await run_pipeline(
