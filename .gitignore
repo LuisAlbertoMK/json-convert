@@ -26,3 +26,4 @@ urls.json
 # Entorno local (no comitear)
 .env
 .history/
+.menu-config.json

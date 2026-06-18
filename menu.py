@@ -27,13 +27,27 @@ if sys.stdout.encoding and sys.stdout.encoding.upper() != "UTF-8":
     except Exception:
         pass
 
-# ── Browser engine — control via EXTRACT_BROWSER env var ──
+# ── Browser engine configuration ──
+# Priority: EXTRACT_BROWSER env var > .menu-config.json > default "chromium"
+_MENU_CONFIG_PATH = Path(__file__).parent / ".menu-config.json"
 _EXTRACT_BROWSER = os.environ.get("EXTRACT_BROWSER", "").strip().lower()
-"""Si EXTRACT_BROWSER=firefox, pasa --browser firefox a extract_browser.py."""
+
+if not _EXTRACT_BROWSER:
+    try:
+        if _MENU_CONFIG_PATH.exists():
+            _cfg = json.loads(_MENU_CONFIG_PATH.read_text(encoding="utf-8"))
+            _EXTRACT_BROWSER = (_cfg.get("browser") or "").strip().lower()
+    except Exception:
+        pass
 
 
 def _browser_args() -> list[str]:
-    """Devuelve ['--browser', 'firefox'] si la env var lo pide, sino []."""
+    """Devuelve ['--browser', 'firefox'] si está configurado Firefox, sino [].
+
+    Configurable via:
+      1. Variable de entorno EXTRACT_BROWSER=firefox
+      2. Archivo .menu-config.json: {"browser": "firefox"}
+    """
     if _EXTRACT_BROWSER == "firefox":
         return ["--browser", "firefox"]
     return []
