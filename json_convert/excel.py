@@ -17,9 +17,6 @@ from datetime import datetime
 
 import openpyxl
 from openpyxl.styles import Alignment, PatternFill
-from openpyxl.utils import get_column_letter
-
-from json_convert.validation import validate_url
 
 # ── Constantes ──
 INPUT_FILE = "RevisionManual.xlsx"

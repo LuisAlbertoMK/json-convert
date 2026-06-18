@@ -15,59 +15,57 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
+
+import openpyxl
+from playwright.async_api import TimeoutError as PwTimeout
+from playwright.async_api import async_playwright
 
 from json_convert import (  # noqa: F401 — re-export for backwards compat
-    VALID_URL_SCHEMES,
-    ALLOWED_HOSTNAME_SUFFIXES,
     AA_DOMAINS,
+    ALLOWED_HOSTNAME_SUFFIXES,
+    CONTROL_HEADERS,
+    DATA_FILLS,
     DATA_LAYER_NAMES,
+    ERROR_CODES,
+    HEADER_FILLS,
     INPUT_FILE,
     SAVE_EVERY_N,
     SHEET_HEADERS,
-    CONTROL_HEADERS,
-    HEADER_FILLS,
-    DATA_FILLS,
-    ERROR_CODES,
-    validate_url,
-    sanitize_url_for_log,
-    parse_aa_beacon,
-    build_aa_from_s,
-    extract_s_object,
-    extract_digital_data,
-    extract_title,
-    try_dismiss_cookie_consent,
-    validate_sheet,
-    save_workbook,
+    VALID_URL_SCHEMES,
+    _auto_row_height,
+    _error_code_from_detail,
+    _has_json_data,
+    _is_json_error,
     _pretty_json,
     _set_col_widths,
-    _auto_row_height,
     _write_cell,
-    _is_json_error,
-    _has_json_data,
     apply_data_fills,
-    split_aa_workbooks,
-    setup_multisheet,
-    update_control,
-    update_vars_sheet,
-    print_progress,
-    _error_code_from_detail,
+    build_aa_from_s,
     classify_errors,
     compute_score,
     compute_url_score,
+    extract_digital_data,
+    extract_s_object,
+    extract_title,
+    parse_aa_beacon,
+    print_progress,
+    sanitize_url_for_log,
+    save_workbook,
+    setup_multisheet,
+    split_aa_workbooks,
+    try_dismiss_cookie_consent,
+    update_control,
+    update_vars_sheet,
+    validate_sheet,
+    validate_url,
 )
-
+from json_convert.cache import UrlCache
 from json_convert.pipeline import (
     route_beacons,
-    write_result,
     run_pipeline,
+    write_result,  # noqa: F401 — re-export for backwards compat (test imports)
 )
-
-import openpyxl
-from openpyxl.styles import Alignment, PatternFill
-from openpyxl.utils import get_column_letter
-from playwright.async_api import TimeoutError as PwTimeout
-from playwright.async_api import async_playwright
 
 # ── Graceful shutdown ──
 _shutdown_flag = False
@@ -129,7 +127,7 @@ async def process_url(
         url_lower = response.url.lower()
         if any(domain in url_lower for domain in AA_DOMAINS):
             try:
-                body = await response.body()
+                await response.body()
                 beacon = response.url
                 if "?" in beacon and len(beacon) > 50:
                     all_beacons.append(beacon)
@@ -251,6 +249,14 @@ async def amain() -> None:
 
     _setup_logging(args.verbose)
 
+    # ── Caché de navegación ──
+    cache = UrlCache(ttl=args.cache_ttl) if not args.no_cache else None
+
+    if args.clear_cache and cache:
+        cleared = cache.clear()
+        print(f"\n  Caché limpiada: {cleared} archivo(s) eliminado(s)")
+        return
+
     # ── Fuente de URLs ──
     urls, url_source = _resolve_urls(args)
     output_path = args.output or _resolve_output(url_source, args.market)
@@ -295,7 +301,19 @@ async def amain() -> None:
         semaphore = asyncio.Semaphore(args.workers or 3)
 
         async def _process_one(row: int, url: str) -> dict:
-            """Crea page, procesa URL, captura beacons, cierra page."""
+            """Crea page, procesa URL, captura beacons, cierra page.
+            Usa caché si está disponible (--no-cache para desactivar)."""
+            # Verificar caché antes de navegar
+            if cache is not None:
+                cached = cache.get(url)
+                if cached is not None:
+                    # Actualizar row + elapsed_s para reflejar la corrida actual
+                    cached = dict(cached)
+                    cached["row"] = row
+                    cached["_from_cache"] = True
+                    logging.debug("Cache hit: %s", url[:80])
+                    return cached
+
             async with semaphore:
                 page = await context.new_page()
                 try:
@@ -305,7 +323,7 @@ async def amain() -> None:
                         url_lower = response.url.lower()
                         if any(d in url_lower for d in AA_DOMAINS):
                             try:
-                                body = await response.body()
+                                await response.body()
                                 beacons.append(response.url)
                             except Exception:
                                 pass
@@ -318,6 +336,9 @@ async def amain() -> None:
                         max_retry=args.max_retry or 1,
                     )
                     result["raw_beacons"] = beacons
+                    # Guardar en caché (sin row específico ni elapsed)
+                    if cache is not None:
+                        cache.set(url, result)
                     return result
                 finally:
                     await page.close()
@@ -383,6 +404,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--log-file", help="Archivo de log")
     p.add_argument("--verbose", action="store_true", help="Logging debug")
     p.add_argument("--run-clean", action="store_true", help="Forzar clean run")
+    p.add_argument("--no-cache", action="store_true", help="Desactivar caché de navegación")
+    p.add_argument("--cache-ttl", type=int, default=86400,
+                   help="TTL de caché en segundos (default: 86400 = 24h)")
+    p.add_argument("--clear-cache", action="store_true", help="Limpiar caché y salir")
     return p
 
 

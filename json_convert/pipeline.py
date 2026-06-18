@@ -28,7 +28,6 @@ from json_convert.metrics import (
     compute_url_score,
 )
 
-
 # ═══════════════════════════════════════════════════════════════════════════
 # BEACON ROUTING — intercepta requests a dominios AA
 # ═══════════════════════════════════════════════════════════════════════════
@@ -151,7 +150,6 @@ async def run_pipeline(
     Returns:
         (results, errors_detail, metrics)
     """
-    semaphore = asyncio.Semaphore(workers)
     excel_lock = asyncio.Lock()
     saved_count = [0]
     results: list[dict] = []

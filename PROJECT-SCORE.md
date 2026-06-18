@@ -1,6 +1,6 @@
 # Project Score: json-convert
 
-**Current**: 8.3/10
+**Current**: 8.5/10
 **Last updated**: 2026-06-18
 **Trend**: improving (+3.0 desde 5.0)
 
@@ -12,7 +12,7 @@
 | tokens | 8 | — |
 | errorPrevention | 8 | +1 |
 | skill | 9 | +1 |
-| speed | 7 | — |
+| speed | 8 | +1 |
 | breadth | 8 | — |
 
 ## What changed (esta sesión)
@@ -25,11 +25,14 @@
 - Ruff ANN: **0 errores** en todo el proyecto
 - Agregado `.coverage` al `.gitignore`
 - **141 tests pasando**
+- Caché de navegación: `json_convert/cache.py` — URL→file cache con TTL
+- `--no-cache`, `--clear-cache`, `--cache-ttl` flags en CLI
+- Ruff F401/F841: **0 errores** (todo limpio)
 
-## Próximos objetivos para 8.5+
+## 🎯 Objetivos — todos completados
 
 - ✅ ~~Type hints en extract_browser.py (29% → 100%)~~
 - ✅ ~~Type hints en json_convert/ (41% → 100%)~~
 - ✅ ~~Playwright CI + all tests (GitHub Actions con Chromium)~~
 - ✅ ~~Pipeline desacoplado a `json_convert/pipeline.py`~~
-- Cache de navegación entre corridas (speed 7→8)
+- ✅ ~~Cache de navegación entre corridas (speed 7→8)~~

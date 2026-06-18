@@ -8,7 +8,6 @@ funciones async que dependen de page (Playwright).
 
 from __future__ import annotations
 
-import json as _json
 import logging
 import re
 from urllib.parse import parse_qs, urlparse

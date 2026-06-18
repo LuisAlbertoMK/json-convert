@@ -20,6 +20,9 @@ urls.json
 # Coverage
 .coverage
 
+# Cache de navegación
+.url_cache/
+
 # Entorno local (no comitear)
 .env
 .history/

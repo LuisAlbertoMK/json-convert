@@ -6,10 +6,7 @@ Cubre funciones puras (sin I/O):
   - determine_status()
   - build_report()
 """
-import json
-import sys
 import unittest
-from unittest.mock import patch
 
 # El módulo depende de openpyxl, que no está en todos los entornos
 try:
