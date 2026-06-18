@@ -56,7 +56,8 @@ THIN_BORDER = Border(
 # Columnas del reporte de salida
 OUTPUT_HEADERS = [
     "nombre pagina", "URL", "mercado", "estado", "detalle error",
-    "fecha ultima revision", "score", "digitaldata", "hoja origen",
+    "fecha ultima revision", "score",
+    "digitaldata", "AA analytics", "hoja origen",
 ]
 
 ERROR_STATES = {"NO_AA_DATA", "TIMEOUT", "HTTP_403", "HTTP_ERROR",
@@ -277,7 +278,8 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
                     "detalle": detalle,
                     "fecha": "",
                     "score": score,
-                    "digitaldata": "?",  # lo setea extract_aa.py después
+                    "digitaldata": dd_status,
+                    "aa": "OK" if tiene_aa else "NO",
                     "hoja": sheet_name,
                     "tiene_aa": tiene_aa,
                     "tiene_dd": tiene_dd,
@@ -314,6 +316,8 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
                     str(col_aa) if col_aa else "", "", meta
                 )
                 tiene_aa = _col_has_real_aa_data(str(col_aa) if col_aa else "")
+                col_dd = ws2.cell(row, h2.get("digitaldata (automatica)", 3)).value if "digitaldata (automatica)" in h2 else None
+                dd_ok = _has_valid_digitaldata(str(col_dd)) if isinstance(col_dd, str) else False
                 pages[url] = {
                     "nombre": str(nombre).strip() if nombre else "(sin nombre)",
                     "url": url,
@@ -322,10 +326,11 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
                     "detalle": detalle,
                     "fecha": os.path.basename(companion).replace(".xlsx", ""),
                     "score": score,
-                    "digitaldata": "?",
+                    "digitaldata": "OK" if dd_ok else "NO",
+                    "aa": "OK" if tiene_aa else "NO",
                     "hoja": f"{suffix} ({sheet_name})",
                     "tiene_aa": tiene_aa,
-                    "tiene_dd": False,  # companion files no tienen col D
+                    "tiene_dd": dd_ok,
                 }
             wb2.close()
         except Exception:
@@ -422,7 +427,8 @@ def _write_data_sheet(wb: openpyxl.Workbook, title: str, data: list[dict],
         vals = [
             page["nombre"], page["url"], page["mercado"],
             page["estado"], page["detalle"], page["fecha"],
-            page["score"], page["digitaldata"], page["hoja"],
+            page["score"],
+            page["digitaldata"], page.get("aa", "?"), page["hoja"],
         ]
         estado = page["estado"]
         for c, val in enumerate(vals, start=1):
@@ -437,12 +443,12 @@ def _write_data_sheet(wb: openpyxl.Workbook, title: str, data: list[dict],
             elif estado == "SIN_DATOS":
                 cell.fill = WARN_FILL
 
-    # Ajustar anchos
-    col_widths = [35, 55, 10, 12, 40, 18, 8, 12, 25]
+    # Ajustar anchos — OUTPUT_HEADERS = 10 columnas (A-J)
+    col_widths = [35, 55, 10, 12, 40, 18, 8, 12, 12, 25]
     for i, w in enumerate(col_widths, start=1):
         ws.column_dimensions[chr(64 + i) if i <= 26 else "A"].width = w
 
-    # Anchos para columnas más allá de la Z
+    # Anchos explícitos
     ws.column_dimensions["A"].width = 35
     ws.column_dimensions["B"].width = 55
     ws.column_dimensions["C"].width = 10
@@ -451,7 +457,8 @@ def _write_data_sheet(wb: openpyxl.Workbook, title: str, data: list[dict],
     ws.column_dimensions["F"].width = 18
     ws.column_dimensions["G"].width = 8
     ws.column_dimensions["H"].width = 12
-    ws.column_dimensions["I"].width = 25
+    ws.column_dimensions["I"].width = 12
+    ws.column_dimensions["J"].width = 25
 
     # Filtro automático
     ws.auto_filter.ref = f"A1:{chr(64 + len(OUTPUT_HEADERS))}{len(data) + 1}"

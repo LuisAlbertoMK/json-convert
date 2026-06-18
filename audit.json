@@ -1,7 +1,7 @@
 {
-  "workers": 3,
-  "retry": 2,
-  "timeout": 35000,
+  "workers": 1,
+  "retry": 3,
+  "timeout": 60000,
   "wait_after": 4,
   "progress": true,
   "headed": false,
