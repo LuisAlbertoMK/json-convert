@@ -267,24 +267,24 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
                 except Exception:
                     nombre = "(sin nombre)"
 
-                # tiene_aa: col_aa tiene datos AA reales (no error codes)
-                tiene_aa = _col_has_real_aa_data(str(col_aa) if col_aa else "")
-                tiene_dd = _has_valid_digitaldata(str(col_dd) if col_dd else "")
-                pages[url] = {
-                    "nombre": str(nombre).strip() if nombre else "(sin nombre)",
-                    "url": url,
-                    "mercado": market,
-                    "estado": estado,
-                    "detalle": detalle,
-                    "fecha": "",
-                    "score": score,
-                    "digitaldata": dd_status,
-                    "aa": "OK" if tiene_aa else "NO",
-                    "hoja": sheet_name,
-                    "tiene_aa": tiene_aa,
-                    "tiene_dd": tiene_dd,
-                }
-            wb.close()
+            # tiene_aa: col_aa tiene datos AA reales (no error codes)
+            tiene_aa = _col_has_real_aa_data(str(col_aa) if col_aa else "")
+            tiene_dd = _has_valid_digitaldata(str(col_dd) if col_dd else "")
+            pages[url] = {
+                "nombre": str(nombre).strip() if nombre else "(sin nombre)",
+                "url": url,
+                "mercado": market,
+                "estado": estado,
+                "detalle": detalle,
+                "fecha": "",
+                "score": score,
+                "digitaldata": dd_status,
+                "aa": "OK" if tiene_aa else "NO",
+                "hoja": sheet_name,
+                "tiene_aa": tiene_aa,
+                "tiene_dd": tiene_dd,
+            }
+    wb.close()
 
     # También leer sin_aa.xlsx / con_aa.xlsx del mismo directorio si existen
     base_dir = os.path.dirname(path)
