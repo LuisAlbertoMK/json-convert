@@ -17,6 +17,9 @@ Thumbs.db
 # Generado
 urls.json
 
+# Coverage
+.coverage
+
 # Entorno local (no comitear)
 .env
 .history/
