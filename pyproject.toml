@@ -84,7 +84,17 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
 
+[tool.coverage.run]
+source = ["json_convert"]
+omit = ["*/__pycache__/*", "*/tests/*"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 55
+
 [[tool.mypy.overrides]]
-module = "test_*"
+module = ["tests.*"]
 allow_untyped_defs = true
 allow_untyped_calls = true

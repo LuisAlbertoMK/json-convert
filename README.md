@@ -1,5 +1,7 @@
 # json-convert
 
+[![quality-gate](https://github.com/LuisAlbertoMK/json-convert/actions/workflows/quality-gate.yml/badge.svg)](https://github.com/LuisAlbertoMK/json-convert/actions/workflows/quality-gate.yml)
+
 Browser automation tool to extract Adobe Analytics data (digitalData + AA beacons) from Ford preview websites into Excel.
 
 ## Quick start
