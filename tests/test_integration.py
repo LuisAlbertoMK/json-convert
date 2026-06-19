@@ -99,7 +99,7 @@ class TestMultisheetPipeline(unittest.TestCase):
 
     def test_setup_with_url_data(self):
         """Simula el flujo real: setup + carga de URLs desde JSON."""
-        wb, ws, audit_date, skipped = setup_multisheet(
+        wb, ws, _audit_date, _skipped = setup_multisheet(
             self.output_path, self.urls_path, resume=False
         )
         # Cargar URLs igual que amain()
@@ -129,14 +129,14 @@ class TestMultisheetPipeline(unittest.TestCase):
     def test_setup_multisheet_resume_skips(self):
         """--resume con sheet existente → skipped=True."""
         # Primera corrida: crear + guardar
-        wb1, ws1, date1, skipped1 = setup_multisheet(
+        wb1, _ws1, date1, _skipped1 = setup_multisheet(
             self.output_path, self.urls_path, resume=False
         )
         save_workbook(wb1, self.output_path)
         wb1.close()
 
         # Segunda corrida con --resume
-        wb2, ws2, date2, skipped2 = setup_multisheet(
+        wb2, _ws2, date2, skipped2 = setup_multisheet(
             self.output_path, self.urls_path, resume=True
         )
         self.assertTrue(skipped2)
@@ -145,7 +145,7 @@ class TestMultisheetPipeline(unittest.TestCase):
 
     def test_setup_multisheet_replaces_existing(self):
         """Sin --resume, reemplaza sheet existente."""
-        wb1, ws1, _, _ = setup_multisheet(
+        wb1, _ws1, _, _ = setup_multisheet(
             self.output_path, self.urls_path, resume=False
         )
         wb1.close()
@@ -185,7 +185,7 @@ class TestMultisheetPipeline(unittest.TestCase):
 
     def test_update_control(self):
         """update_control agrega fila correctamente."""
-        wb, ws, audit_date, _ = setup_multisheet(
+        wb, _ws, audit_date, _ = setup_multisheet(
             self.output_path, self.urls_path, resume=False
         )
         update_control(wb, audit_date, "urls.json",
@@ -222,7 +222,7 @@ class TestMultisheetPipeline(unittest.TestCase):
 
     def test_save_workbook_fallback(self):
         """save_workbook con archivo bloqueado → fallback."""
-        wb, ws, _, _ = setup_multisheet(
+        wb, _ws, _, _ = setup_multisheet(
             self.output_path, self.urls_path, resume=False
         )
         # Mock: primer save falla, segundo save (fallback) funciona

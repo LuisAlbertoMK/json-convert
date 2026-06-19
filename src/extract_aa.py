@@ -193,10 +193,10 @@ def main():
                     sys.exit(1)
                 logging.info("Historial generado correctamente.")
             except subprocess.TimeoutExpired:
-                logging.error("extract_browser excedió el tiempo de espera (600s)")
+                logging.exception("extract_browser excedió el tiempo de espera (600s)")
                 sys.exit(1)
             except FileNotFoundError:
-                logging.error("No se encuentra extract_browser.py junto a extract_aa.py")
+                logging.exception("No se encuentra extract_browser.py junto a extract_aa.py")
                 sys.exit(1)
         else:
             logging.error("No se encuentra '%s'. Usá --urls <urls.json> para auto-generar.", args.input)

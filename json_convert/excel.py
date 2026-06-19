@@ -230,7 +230,7 @@ def _has_aa(col_e: object) -> bool:
 
 def split_aa_workbooks(wb: object, audit_date: str, output_dir: str) -> None:
     """Crea con_aa.xlsx (tiene AA o digitalData) y sin_aa.xlsx (no tiene nada).
-    
+
     Ahora considera AMBAS columnas: AA (col E) y digitalData (col D).
     """
     ws = wb[audit_date]
@@ -336,7 +336,7 @@ def update_vars_sheet(wb: object, audit_date: str, rows_aa: list[tuple[int, dict
         _set_col_widths(vs)
 
     seen = set()
-    for row_num, parsed in rows_aa:
+    for _row_num, parsed in rows_aa:
         for key in parsed.get("eVars", {}):
             if key not in seen:
                 seen.add(key)

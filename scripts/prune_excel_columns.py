@@ -30,7 +30,7 @@ DEAD_COLS = [
 ]
 
 
-def find_excel_files(base_dir: str, specific_dir: str = None) -> list[str]:
+def find_excel_files(base_dir: str, specific_dir: str | None = None) -> list[str]:
     """Busca historial.xlsx, con_aa.xlsx, sin_aa.xlsx en market dirs y raíz."""
     targets = ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]
     found = []
@@ -121,7 +121,6 @@ def main():
     for fpath in files:
         stats = prune_file(fpath, args.dry_run)
         if stats["removed_cols"]:
-            mode = " SIMULACION" if args.dry_run else ""
             print(f"  {'[DRY]' if args.dry_run else '[OK]'} {os.path.relpath(fpath, base)}")
             for col in stats["removed_cols"]:
                 print(f"         eliminada columna: {col}")

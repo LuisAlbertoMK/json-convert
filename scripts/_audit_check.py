@@ -2,8 +2,9 @@
 _audit_check.py — Verifica calidad de archivos .xlsx generados.
 """
 import json
-import openpyxl
 import os
+
+import openpyxl
 
 print("=" * 60)
 print("1. reporte_auditoria.xlsx")
@@ -171,7 +172,7 @@ if os.path.exists(root_hist):
             for u, c in sorted(dupes.items())[:5]:
                 print(f"    x{c}: {u[:80]}")
         else:
-            print(f"  No duplicates in root historial")
+            print("  No duplicates in root historial")
     wb.close()
 
 # Check url.json sources

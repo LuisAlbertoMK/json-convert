@@ -64,9 +64,9 @@ ERROR_STATES = {"NO_AA_DATA", "TIMEOUT", "HTTP_403", "HTTP_ERROR",
                 "URL_INVALID", "NETWORK_ERROR", "NAV_ERROR", "UNKNOWN"}
 
 
-def find_historial_files(base_dir: str, specific_dirs: list[str] = None) -> list[tuple[str, str]]:
+def find_historial_files(base_dir: str, specific_dirs: list[str] | None = None) -> list[tuple[str, str]]:
     """Busca archivos historial.xlsx en directorios de mercado.
-    
+
     Returns:
         Lista de (ruta_completa, nombre_mercado)
     """
@@ -141,11 +141,11 @@ def _col_has_real_aa_data(raw: str) -> bool:
 
 def determine_status(col_e: str, col_d: str, meta: dict) -> tuple[str, str, int]:
     """Determina si una URL está funcionando.
-    
+
     El error real está en la columna AA (col_e = col 4 del Excel) como JSON
     con campos "code" y "error". La metadata (col 6) solo tiene score.
     Si no hay AA pero col_d tiene digitalData válido, también cuenta como OK.
-    
+
     Returns:
         (estado: "OK"|"FALLO"|"SIN_DATOS", detalle_error: str, score: int)
     """
@@ -191,7 +191,7 @@ def determine_status(col_e: str, col_d: str, meta: dict) -> tuple[str, str, int]
 
 def extract_pages_from_historial(path: str, market: str) -> list[dict]:
     """Extrae todas las páginas de un archivo historial, tomando el ÚLTIMO sheet de cada URL.
-    
+
     Returns:
         Lista de dicts con datos de cada página (una por URL, la más reciente)
     """
@@ -224,7 +224,6 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
         dd_manual_col = _hc("digitaldata (manual)", 3)
         dd_auto_col = _hc("digitaldata (automatica)", 3)
         aa_auto_col = _hc("aa analytics (automatico)", 4)
-        aa_struct_col = _hc("aa analytics (estructurado)", 5)
         meta_col = _hc("metadata / extra beacons", 6)
 
         for row in range(2, ws.max_row + 1):
@@ -341,7 +340,7 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
 
 def build_report(all_pages: list[dict]) -> tuple[list[dict], list[dict]]:
     """Separa en working y failed, ordena.
-    
+
     Returns:
         (failed_pages, all_sorted)
     """

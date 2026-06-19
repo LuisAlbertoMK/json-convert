@@ -45,7 +45,7 @@ def make_name_from_url(url: str) -> str:
     return " ".join(w.capitalize() for w in words) if words else ""
 
 
-def extract(input_path: str, default_market: str = None) -> list:
+def extract(input_path: str, default_market: str | None = None) -> list:
     wb = openpyxl.load_workbook(input_path)
     ws = wb.active
     entries = []

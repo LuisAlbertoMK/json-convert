@@ -4,6 +4,7 @@ Sin prompts interactivos, seguro contra locks.
 """
 import os
 import shutil
+
 import openpyxl
 
 ROOT_HIST = r"C:\Users\LuisOrozco\OneDrive - WPP Cloud\Escritorio\historial.xlsx"
@@ -147,7 +148,7 @@ def main():
 
     # ── 5.5 Debug: check _has_digitaldata / _has_aa behavior ──
     print("\n[DEBUG] Checking split function behavior...")
-    from json_convert.excel import _has_digitaldata, _has_aa
+    from json_convert.excel import _has_aa, _has_digitaldata
 
     dd_yes = 0
     dd_no = 0
@@ -168,7 +169,7 @@ def main():
     print(f"  _has_digitaldata: YES={dd_yes}, NO={dd_no}")
     print(f"  _has_aa: YES={aa_yes}, NO={aa_no}")
     print(f"  has_data (DD or AA): {dd_yes + aa_yes}")
-    print(f"  has_data (DD or AA, dedup): ", end="")
+    print("  has_data (DD or AA, dedup): ", end="")
     both = 0
     for r in range(2, source_ws.max_row + 1):
         col_d = source_ws.cell(r, 4).value
@@ -179,7 +180,9 @@ def main():
 
     # ── 6. Now regenerate con_aa/sin_aa from this historial ──
     print(f"\n[2] Regenerando con_aa/sin_aa desde {out_path}...")
-    from json_convert.excel import split_aa_workbooks, HEADER_FILLS, SHEET_HEADERS, _set_col_widths, apply_data_fills, _auto_row_height, save_workbook
+    from json_convert.excel import (
+        split_aa_workbooks,
+    )
 
     wb_split = openpyxl.load_workbook(out_path, data_only=True)
     split_aa_workbooks(wb_split, target_sheet, PR_DIR)
@@ -204,7 +207,7 @@ def main():
         sin_rows = sum(1 for r in range(2, ws_s.max_row + 1) if ws_s.cell(r, 2).value)
         wb_s.close()
 
-    print(f"[OK] Split results:")
+    print("[OK] Split results:")
     print(f"  con_aa.xlsx: {con_rows} rows")
     print(f"  sin_aa.xlsx: {sin_rows} rows")
     print(f"  Total: {con_rows + sin_rows} (expect {copied})")

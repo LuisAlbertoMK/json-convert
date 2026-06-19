@@ -89,7 +89,7 @@ def load_json(path: str) -> dict:
 
 def find_digitaldata_in_historial(historial_path: str, preview_url: str) -> dict:
     """Busca el digitalData de una URL en el historial.
-    
+
     Header-aware: busca "digitaldata (automatica)" o fallback a col 3.
     """
     wb = openpyxl.load_workbook(historial_path, data_only=True)
@@ -456,9 +456,6 @@ def generate_catalog(historial_path: str, mapping_path: str,
 
     # ─── Fila de firma ───
     row_idx += 1
-    total_expected = sum(
-        1 + len(PARAMS_ORDER) for m in mappings if m.get("page_key")
-    )
     ws.cell(row_idx, 1,
             f"Generado: {date.today().isoformat()} | "
             f"Mercado: {market} | "

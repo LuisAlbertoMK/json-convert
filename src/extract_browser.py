@@ -7,6 +7,7 @@ Uso: python extract_browser.py [--urls urls.json] [--workers N] ...
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import os
@@ -19,7 +20,6 @@ from datetime import datetime, timedelta
 
 import openpyxl
 from playwright.async_api import TimeoutError as PwTimeout
-from playwright.async_api import Error as PwError
 from playwright.async_api import async_playwright
 
 from json_convert import (  # noqa: F401 — re-export for backwards compat
@@ -368,7 +368,6 @@ async def amain() -> None:
         )
         # NO compartir contexto — cada página crea el suyo para evitar
         # "Target page, context or browser has been closed" en cascada.
-        context = None
 
         # ── Crear process_func que cada worker usa para procesar una URL ──
         semaphore = asyncio.Semaphore(args.workers or 3)
@@ -474,7 +473,7 @@ async def amain() -> None:
                         logging.debug("Error cerrando contexto de página: %s", e)
 
         # ── Pipeline (procesa URLs + escribe Excel) ──
-        results, errors_detail, metrics = await run_pipeline(
+        results, _errors_detail, metrics = await run_pipeline(
             _process_one, urls,
             workers=args.workers or 3,
             ws=ws,
@@ -512,7 +511,6 @@ async def amain() -> None:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    import argparse
     p = argparse.ArgumentParser(description="Extrae Adobe Analytics de URLs Ford")
     p.add_argument("--urls", help="Archivo JSON con URLs")
     p.add_argument("--input", default=INPUT_FILE, help="Excel de entrada")
@@ -621,7 +619,7 @@ def _resolve_urls(args: argparse.Namespace) -> tuple[list[tuple[int, str]], str]
     return urls, source
 
 
-def _resolve_output(url_source: str, market: str = None) -> str:
+def _resolve_output(url_source: str, market: str | None = None) -> str:
     """Determina nombre de output segun fuente."""
     if url_source == "clasico":
         return "resultado.xlsx"

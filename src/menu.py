@@ -132,7 +132,7 @@ def confirm(prompt: str, default: bool = True) -> bool:
 def run_step(cmd: list[str], label: str, cwd: str | None = None,
              timeout: int | None = None) -> int:
     """Ejecuta un comando mostrando output en tiempo real.
-    
+
     Returns:
         exit code del comando
     """
@@ -214,7 +214,7 @@ def _count_urls(market: str | None = None, env: str = "preview") -> int:
 
 def _choose_entorno(non_interactive: bool = False) -> str:
     """Muestra submenu de entorno y retorna 'preview', 'produccion' o 'ambas'.
-    
+
     Args:
         non_interactive: si True, retorna 'ambas' sin preguntar.
     """
@@ -295,11 +295,11 @@ ALL_MARKETS = "__ALL__"  # sentinel para "todos los mercados"
 
 def choose_market(source: str = "detect") -> tuple[str | None, str | None]:
     """Muestra submenu de mercados y retorna (nombre|ALL_MARKETS, archivo|None).
-    
+
     Args:
         source: "detect" → detect_markets() (busca archivos Excel)
                 "urls" → get_markets_from_urls() (desde urls.json)
-    
+
     Returns:
         (market_name, filepath) o (ALL_MARKETS, None) para "todos"
     """
@@ -392,7 +392,7 @@ def op_postprocesar(non_interactive: bool = False) -> None:
 
     if market == ALL_MARKETS:
         markets = detect_markets()
-        for m, hpath in markets:
+        for _m, hpath in markets:
             _run_extract_aa(hpath)
             _run_extract_aa_companions(hpath)
     else:
@@ -668,7 +668,7 @@ def op_ver_resultados() -> None:
     if os.path.exists(report):
         targets.append(report)
 
-    for m, hpath in detect_markets():
+    for _m, hpath in detect_markets():
         base = os.path.dirname(hpath)
         for fname in ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]:
             fp = os.path.join(base, fname)
@@ -697,7 +697,7 @@ def op_ver_resultados() -> None:
 
 def op_todo_en_uno(target_market=None, non_interactive=False):
     """Opcion 1: Pipeline completo.
-    
+
     Args:
         target_market: None → preguntar (interactivo) o ALL (--run)
                        "PR" → solo ese mercado

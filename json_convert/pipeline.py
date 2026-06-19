@@ -189,7 +189,7 @@ async def run_pipeline(
             # Cada worker tiene su propia página (creada por process_func)
             result = await process_func(row, url)
         except Exception as e:
-            logging.error("[%s] Fallo grave: %s", url[:60], e)
+            logging.exception("[%s] Fallo grave: %s", url[:60], e)
             result = {
                 "url": url, "row": row, "error": str(e),
                 "aa_parsed": None, "digitaldata": None,
@@ -209,7 +209,7 @@ async def run_pipeline(
                 start_time=pipeline_start,
             )
         except Exception as e:
-            logging.error("[%s] Error escribiendo resultado: %s", url[:60], e)
+            logging.exception("[%s] Error escribiendo resultado: %s", url[:60], e)
 
         if result.get("error"):
             errors_detail.append({"row": row, "error": result["error"]})

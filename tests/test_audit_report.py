@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 # El módulo depende de openpyxl, que no está en todos los entornos
 try:
-    import openpyxl  # noqa: F401
+    import openpyxl
 except ImportError:
     openpyxl = None  # type: ignore
 
@@ -56,7 +56,7 @@ class TestDetermineStatus(unittest.TestCase):
     """determine_status(): clasifica estado de URL (OK/FALLO/SIN_DATOS)."""
 
     def test_ok_with_data(self):
-        estado, detalle, score = determine_status("some data", "", {})
+        estado, detalle, _score = determine_status("some data", "", {})
         self.assertEqual(estado, "OK")
         self.assertEqual(detalle, "")
 
@@ -64,35 +64,35 @@ class TestDetermineStatus(unittest.TestCase):
         for code in ("NO_AA_DATA", "TIMEOUT", "HTTP_403", "HTTP_ERROR",
                      "URL_INVALID", "NETWORK_ERROR", "NAV_ERROR", "UNKNOWN"):
             meta = {"code": code, "error": "test error"}
-            estado, detalle, score = determine_status("", "", meta)
+            estado, detalle, _score = determine_status("", "", meta)
             self.assertEqual(estado, "FALLO", f"FALLO esperado para {code}")
             self.assertIn("test error", detalle)
 
     def test_error_code_fallback_to_code(self):
         meta = {"code": "HTTP_403", "error": ""}
-        estado, detalle, score = determine_status("", "", meta)
+        estado, detalle, _score = determine_status("", "", meta)
         self.assertEqual(estado, "FALLO")
         self.assertEqual(detalle, "HTTP_403")
 
     def test_col_e_starts_with_paren(self):
-        estado, detalle, score = determine_status("(404 Not Found)", "", {})
+        estado, detalle, _score = determine_status("(404 Not Found)", "", {})
         self.assertEqual(estado, "FALLO")
         self.assertEqual(detalle, "404 Not Found")
 
     def test_empty_col_e(self):
-        estado, detalle, score = determine_status("", "", {})
+        estado, _detalle, _score = determine_status("", "", {})
         self.assertEqual(estado, "SIN_DATOS")
 
     def test_col_e_dash(self):
-        estado, detalle, score = determine_status("-", "", {})
+        estado, _detalle, _score = determine_status("-", "", {})
         self.assertEqual(estado, "SIN_DATOS")
 
     def test_col_e_n_a(self):
-        estado, detalle, score = determine_status("N/A", "", {})
+        estado, _detalle, _score = determine_status("N/A", "", {})
         self.assertEqual(estado, "SIN_DATOS")
 
     def test_sin_datos_with_no_digitaldata(self):
-        estado, detalle, score = determine_status("", "(no digitaldata)", {})
+        estado, detalle, _score = determine_status("", "(no digitaldata)", {})
         self.assertEqual(estado, "SIN_DATOS")
         self.assertIn("Sin digitalData", detalle)
 
@@ -107,7 +107,7 @@ class TestDetermineStatus(unittest.TestCase):
 
     def test_ok_with_col_e_numeric(self):
         """Col E con valor numérico (no string) debe tratarse como OK."""
-        estado, detalle, score = determine_status("12345", "", {})
+        estado, _detalle, _score = determine_status("12345", "", {})
         self.assertEqual(estado, "OK")
 
     def test_error_code_with_score(self):
@@ -147,7 +147,7 @@ class TestBuildReport(unittest.TestCase):
         self.assertEqual(len(all_sorted), 1)
 
     def test_all_fail(self):
-        failed, all_sorted = build_report([self.fail_page])
+        failed, _all_sorted = build_report([self.fail_page])
         self.assertEqual(len(failed), 1)
         self.assertEqual(failed[0]["estado"], "FALLO")
 
