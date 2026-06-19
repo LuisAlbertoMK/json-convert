@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from extract_aa import ALL_FIELDS, DEFAULT_KEEP, _save_workbook, extract_fields
 
 SAMPLE_AA_JSON = {

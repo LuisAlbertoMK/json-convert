@@ -29,7 +29,7 @@ if sys.stdout.encoding and sys.stdout.encoding.upper() != "UTF-8":
 
 # ── Browser engine configuration ──
 # Priority: EXTRACT_BROWSER env var > .menu-config.json > default "chromium"
-_MENU_CONFIG_PATH = Path(__file__).parent / ".menu-config.json"
+_MENU_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config/.menu-config.json"
 _EXTRACT_BROWSER = os.environ.get("EXTRACT_BROWSER", "").strip().lower()
 
 if not _EXTRACT_BROWSER:
@@ -178,7 +178,7 @@ def run_ps1(script: str, args: str = "", timeout: int | None = None) -> int:
 
 def get_markets_from_urls() -> list[str]:
     """Lee los mercados únicos desde urls.json."""
-    urls_path = os.path.join(BASE_DIR, "urls.json")
+    urls_path = os.path.join(BASE_DIR, "data/urls.json")
     if not os.path.exists(urls_path):
         return []
     try:
@@ -192,7 +192,7 @@ def get_markets_from_urls() -> list[str]:
 
 def _count_urls(market: str | None = None, env: str = "preview") -> int:
     """Cuenta URLs en urls.json (por mercado y entorno)."""
-    urls_path = os.path.join(BASE_DIR, "urls.json")
+    urls_path = os.path.join(BASE_DIR, "data/urls.json")
     if not os.path.exists(urls_path):
         return 0
     try:
@@ -339,11 +339,11 @@ def op_auditar(non_interactive: bool = False) -> None:
     """Opcion 2: Solo auditoria (extract_browser) por mercado."""
     header("AUDITORIA - extract_browser.py")
 
-    urls_path = os.path.join(BASE_DIR, "urls.json")
+    urls_path = os.path.join(BASE_DIR, "data/urls.json")
     if not os.path.exists(urls_path):
         print(_c("yellow", "  No se encuentra urls.json"))
         if confirm("  Generarlo desde RevisionManual.xlsx?"):
-            run_step([sys.executable, "_gen_urls.py"], "Generando urls.json")
+            run_step([sys.executable, "scripts/_gen_urls.py"], "Generando urls.json")
         else:
             print(_c("yellow", "  Cancelado. Necesitas urls.json para auditar."))
             return
@@ -359,13 +359,13 @@ def op_auditar(non_interactive: bool = False) -> None:
         markets = get_markets_from_urls()
         for m in markets:
             n = _count_urls(m, entorno)
-            cmd = ([sys.executable, "extract_browser.py", "--urls", "urls.json",
+            cmd = ([sys.executable, "src/extract_browser.py", "--urls", "data/urls.json",
                     "--market", m, "--entorno", entorno, "--split-aa", "--progress"]
                    + _browser_args())
             run_step(cmd, f"Auditando {m} ({n} URLs [{entorno}])...", timeout=600)
     else:
         n = _count_urls(market, entorno)
-        cmd = ([sys.executable, "extract_browser.py", "--urls", "urls.json",
+        cmd = ([sys.executable, "src/extract_browser.py", "--urls", "data/urls.json",
                 "--market", market, "--entorno", entorno, "--split-aa", "--progress"]
                + _browser_args())
         run_step(cmd, f"Auditando {market} ({n} URLs [{entorno}])...", timeout=600)
@@ -381,9 +381,9 @@ def op_postprocesar(non_interactive: bool = False) -> None:
     if market is None:
         # Sin archivos → auto-bootstrap desde urls.json
         print(_c("yellow", "  No se encontraron archivos de auditoria."))
-        urls_path = os.path.join(BASE_DIR, "urls.json")
+        urls_path = os.path.join(BASE_DIR, "data/urls.json")
         if os.path.exists(urls_path) and confirm("  Generar desde urls.json automaticamente?"):
-            run_step([sys.executable, "extract_aa.py", "--input", "historial.xlsx",
+            run_step([sys.executable, "src/extract_aa.py", "--input", "historial.xlsx",
                       "--urls", urls_path],
                      "Generando y procesando desde urls.json...", timeout=600)
         else:
@@ -404,7 +404,7 @@ def op_postprocesar(non_interactive: bool = False) -> None:
 
 def _run_extract_aa(hpath: str) -> None:
     """Ejecuta extract_aa.py sobre un archivo historial (auto-bootstrap si falta)."""
-    run_step([sys.executable, "extract_aa.py", "--input", hpath, "--urls", "urls.json"],
+    run_step([sys.executable, "src/extract_aa.py", "--input", hpath, "--urls", "data/urls.json"],
              "Procesando: " + hpath, timeout=600)
 
 
@@ -414,7 +414,7 @@ def _run_extract_aa_companions(hpath: str) -> None:
     for fname in ["con_aa.xlsx", "sin_aa.xlsx"]:
         fp = os.path.join(base_dir, fname)
         if os.path.exists(fp):
-            run_step([sys.executable, "extract_aa.py", "--input", fp, "--urls", "urls.json"],
+            run_step([sys.executable, "src/extract_aa.py", "--input", fp, "--urls", "data/urls.json"],
                      "Procesando: " + fp, timeout=600)
 
 
@@ -423,11 +423,11 @@ def op_reporte(non_interactive: bool = False) -> None:
     header("REPORTE DE FALLOS - audit_report.py")
 
     entorno = _choose_entorno(non_interactive)
-    urls_path = os.path.join(BASE_DIR, "urls.json")
+    urls_path = os.path.join(BASE_DIR, "data/urls.json")
     urls_arg = ["--urls", urls_path] if os.path.exists(urls_path) else []
 
     code = run_step(
-        [sys.executable, "audit_report.py"] + urls_arg + ["--entorno", entorno],
+        [sys.executable, "src/audit_report.py"] + urls_arg + ["--entorno", entorno],
         f"Generando reporte (entorno: {entorno}, puede tardar 15-30 min en auto-bootstrap)...",
         timeout=3600)
 
@@ -467,16 +467,16 @@ def op_catalogo(non_interactive: bool = False) -> None:
     market_name, historial_path = markets[m_idx - 1]
 
     # Verificar url-mapping.json
-    mapping_path = os.path.join(BASE_DIR, "url-mapping.json")
+    mapping_path = os.path.join(BASE_DIR, "data/url-mapping.json")
     if not os.path.exists(mapping_path):
         print(_c("yellow", "\n  No se encuentra url-mapping.json"))
         if confirm("  Generar template desde RevisionManual.xlsx?", default=True):
             input_path = os.path.join(BASE_DIR, "RevisionManual.xlsx")
             if os.path.exists(input_path):
                 run_step(
-                    [sys.executable, "generate_migration_catalog.py",
+                    [sys.executable, "src/generate_migration_catalog.py",
                      "--gen-template", "--input", input_path,
-                     "--mapping", "url-mapping.json"],
+                     "--mapping", "data/url-mapping.json"],
                     "Generando template url-mapping.json...")
                 print(_c("yellow", "\n  [!] EDITAR url-mapping.json con production_url, aem_path y page_key"))
                 print("      Despues ejecutar esta opcion nuevamente.")
@@ -485,7 +485,7 @@ def op_catalogo(non_interactive: bool = False) -> None:
         return
 
     # Verificar expected.json
-    expected_path = os.path.join(BASE_DIR, "expected.json")
+    expected_path = os.path.join(BASE_DIR, "data/expected.json")
     if not os.path.exists(expected_path):
         print(_c("red", "  No se encuentra expected.json"))
         print("  Debe existir con las reglas del estandar US para cada mercado.")
@@ -507,10 +507,10 @@ def op_catalogo(non_interactive: bool = False) -> None:
 
     if confirm("  Generar catalogo?", default=True):
         run_step(
-            [sys.executable, "generate_migration_catalog.py",
+            [sys.executable, "src/generate_migration_catalog.py",
              "--historial", historial_path,
-             "--mapping", "url-mapping.json",
-             "--expected", "expected.json",
+             "--mapping", "data/url-mapping.json",
+             "--expected", "data/expected.json",
              "--market", market_name],
             "Generando catalogo de migracion...", timeout=60)
 
@@ -523,7 +523,7 @@ def op_catalogo(non_interactive: bool = False) -> None:
 def op_limpieza() -> None:
     """Opcion 5: Limpieza (run.ps1 -SkipTests)."""
     header("LIMPIEZA - run.ps1")
-    run_ps1("run.ps1", "-SkipTests", timeout=60)
+    run_ps1("scripts/run.ps1", "-SkipTests", timeout=60)
     print(_c("green", "\n  [OK] Limpieza finalizada."))
 
 
@@ -537,10 +537,10 @@ def op_prune() -> None:
         return
 
     if market == ALL_MARKETS:
-        cmd = [sys.executable, "prune_excel_columns.py"]
+        cmd = [sys.executable, "scripts/prune_excel_columns.py"]
         label = "Todos los mercados"
     else:
-        cmd = [sys.executable, "prune_excel_columns.py", "--dir", market]
+        cmd = [sys.executable, "scripts/prune_excel_columns.py", "--dir", market]
         label = "Mercado: " + market
 
     code = run_step(cmd, label, timeout=30)
@@ -588,8 +588,8 @@ def op_match() -> None:
         m_idx = ask_int("  Selecciona mercado [1-" + str(len(markets)) + "]: ", 1, len(markets))
 
     market_name, historial_path = markets[m_idx - 1]
-    mapping_path = os.path.join(BASE_DIR, "url-mapping.json")
-    expected_path = os.path.join(BASE_DIR, "expected.json")
+    mapping_path = os.path.join(BASE_DIR, "data/url-mapping.json")
+    expected_path = os.path.join(BASE_DIR, "data/expected.json")
 
     if not os.path.exists(mapping_path):
         print(_c("red", "  No se encuentra url-mapping.json"))
@@ -611,7 +611,7 @@ def op_match() -> None:
 
     if confirm("  Generar match report?", default=True):
         run_step(
-            [sys.executable, "match_prod_preview.py",
+            [sys.executable, "src/match_prod_preview.py",
              "--production", historial_path,
              "--mapping", mapping_path,
              "--expected", expected_path,
@@ -753,14 +753,14 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
     # Paso 2: Verificar urls.json
     print()
     print(_c("cyan", "  [2/8] Verificando entorno..."))
-    urls_path = os.path.join(BASE_DIR, "urls.json")
+    urls_path = os.path.join(BASE_DIR, "data/urls.json")
     has_urls = os.path.exists(urls_path)
     if not has_urls:
         print(_c("yellow", "    No se encuentra urls.json"))
         rp = os.path.join(BASE_DIR, "RevisionManual.xlsx")
         if os.path.exists(rp):
             if confirm("    Generarlo desde RevisionManual.xlsx?", default=True):
-                rc = run_step([sys.executable, "_gen_urls.py"], "Generando urls.json")
+                rc = run_step([sys.executable, "scripts/_gen_urls.py"], "Generando urls.json")
                 results.append(("Generar urls.json", rc))
                 has_urls = (rc == 0)
             else:
@@ -793,7 +793,7 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
             for m in markets_to_run:
                 n = _count_urls(m, entorno)
                 rc = run_step(
-                    [sys.executable, "extract_browser.py", "--urls", "urls.json",
+                    [sys.executable, "src/extract_browser.py", "--urls", "data/urls.json",
                      "--market", m, "--entorno", entorno, "--split-aa", "--progress"]
                     + _browser_args(),
                     f"Auditando {m} ({n} URLs [{entorno}])...", timeout=600)
@@ -801,7 +801,7 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
                 if rc != 0:
                     audit_ok = False
         else:
-            rc = run_step([sys.executable, "extract_browser.py"] + _browser_args(),
+            rc = run_step([sys.executable, "src/extract_browser.py"] + _browser_args(),
                           "Ejecutando (modo Excel plano)...", timeout=600)
             results.append(("Auditoria", rc))
             audit_ok = (rc == 0)
@@ -838,30 +838,30 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
         # Paso 5: Limpiar columnas muertas
         print()
         print(_c("cyan", "  [5/8] Limpiando columnas inutiles..."))
-        rc = run_step([sys.executable, "prune_excel_columns.py"],
-                      "prune_excel_columns.py", timeout=30)
+        rc = run_step([sys.executable, "scripts/prune_excel_columns.py"],
+                      "scripts/prune_excel_columns.py", timeout=30)
         results.append(("Prune columnas", rc))
 
         # Paso 6: Reporte de fallos (global + por mercado)
         print()
         print(_c("cyan", f"  [6/8] Generando reporte de fallos ({entorno})..."))
         rc = run_step(
-            [sys.executable, "audit_report.py", "--urls", "urls.json", "--entorno", entorno],
-            "audit_report.py", timeout=600)
+            [sys.executable, "src/audit_report.py", "--urls", "data/urls.json", "--entorno", entorno],
+            "src/audit_report.py", timeout=600)
         results.append(("Reporte de fallos", rc))
 
         # Paso 7: Catalogo de migracion
         print()
         print(_c("cyan", "  [7/8] Catalogo de migracion..."))
-        mapping_path = os.path.join(BASE_DIR, "url-mapping.json")
+        mapping_path = os.path.join(BASE_DIR, "data/url-mapping.json")
         if not os.path.exists(mapping_path):
             rp = os.path.join(BASE_DIR, "RevisionManual.xlsx")
             if os.path.exists(rp):
                 print(_c("yellow", "    No se encuentra url-mapping.json"))
                 if confirm("    Generar template desde RevisionManual.xlsx?", default=True):
                     rc = run_step(
-                        [sys.executable, "generate_migration_catalog.py",
-                         "--gen-template", "--input", rp, "--mapping", "url-mapping.json"],
+                        [sys.executable, "src/generate_migration_catalog.py",
+                         "--gen-template", "--input", rp, "--mapping", "data/url-mapping.json"],
                         "Generando url-mapping.json...")
                     if rc == 0:
                         print(_c("yellow", "    [!] EDITAR url-mapping.json con production_url, aem_path y page_key"))
@@ -872,13 +872,13 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
                 print(_c("yellow", "    No hay RevisionManual.xlsx ni url-mapping.json - saltando catalogo"))
                 results.append(("Catalogo migracion", -1))
 
-        if os.path.exists(mapping_path) and os.path.exists(os.path.join(BASE_DIR, "expected.json")):
+        if os.path.exists(mapping_path) and os.path.exists(os.path.join(BASE_DIR, "data/expected.json")):
             for m, hpath in post_markets:
                 rc = run_step(
-                    [sys.executable, "generate_migration_catalog.py",
+                    [sys.executable, "src/generate_migration_catalog.py",
                      "--historial", hpath,
-                     "--mapping", "url-mapping.json",
-                     "--expected", "expected.json",
+                     "--mapping", "data/url-mapping.json",
+                     "--expected", "data/expected.json",
                      "--market", m],
                     "Catalogo " + m + "...", timeout=60)
                 results.append(("Catalogo " + m, rc))
@@ -1019,12 +1019,12 @@ if __name__ == "__main__":
                         help="Ejecutar opcion directa: numero 1-11, 0, o 'auto'")
     args = parser.parse_args()
 
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = Path(__file__).resolve().parent.parent
 
     # Verificar proyecto
     is_project = any(
         os.path.exists(os.path.join(BASE_DIR, f))
-        for f in ["extract_browser.py", "extract_aa.py", "run.ps1"]
+        for f in ["src/extract_browser.py", "src/extract_aa.py", "scripts/run.ps1"]
     )
     if not is_project:
         print(_c("red", "[ERROR] Este script debe ejecutarse desde la raiz del proyecto json-convert"))

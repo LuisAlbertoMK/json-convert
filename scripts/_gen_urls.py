@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import openpyxl
 
 DEFAULT_INPUT = "RevisionManual.xlsx"
-DEFAULT_OUTPUT = "urls.json"
+DEFAULT_OUTPUT = "data/urls.json"
 _MARKET_RE = re.compile(r"/([a-z]{2})_([a-z]{2})/")
 
 def detect_market_from_url(url: str) -> str | None:

@@ -10,7 +10,7 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 from _gen_urls import extract
 
 

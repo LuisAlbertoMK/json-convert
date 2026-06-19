@@ -27,7 +27,7 @@ echo   run.ps1 - Analisis + Limpieza
 echo ========================================
 echo.
 
-%%PWSH%% -ExecutionPolicy Bypass -NoProfile -File "%%SCRIPT_DIR%%run.ps1" %%PS_ARGS%%
+%%PWSH%% -ExecutionPolicy Bypass -NoProfile -File "%%SCRIPT_DIR%%scripts\run.ps1" %%PS_ARGS%%
 
 if %%errorlevel%% neq 0 (
     echo.

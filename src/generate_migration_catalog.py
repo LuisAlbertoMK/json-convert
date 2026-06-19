@@ -773,9 +773,9 @@ def main():
 
     parser.add_argument("--historial", default="PR/historial.xlsx",
                         help="Ruta al historial.xlsx del pipeline")
-    parser.add_argument("--mapping", default="url-mapping.json",
+    parser.add_argument("--mapping", default="data/url-mapping.json",
                         help="JSON mapeo preview→producción")
-    parser.add_argument("--expected", default="expected.json",
+    parser.add_argument("--expected", default="data/expected.json",
                         help="JSON con valores esperados por mercado")
     parser.add_argument("--market", default="PR",
                         help="Código de mercado (PR, MX...)")

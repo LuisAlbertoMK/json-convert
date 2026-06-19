@@ -184,7 +184,7 @@ def _status_text(code: int) -> str:
     }.get(code, f"Codigo {code}")
 
 
-def load_urls(path: str = "urls.json") -> list[dict]:
+def load_urls(path: str = "data/urls.json") -> list[dict]:
     """Carga URLs desde JSON y filtra solo produccion."""
     p = Path(path)
     if not p.exists():
@@ -316,7 +316,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Analisis HTTP de URLs de produccion (sin Playwright)"
     )
-    parser.add_argument("--urls", default="urls.json", help="Path a urls.json")
+    parser.add_argument("--urls", default="data/urls.json", help="Path a urls.json")
     parser.add_argument("--market", default=None, help="Filtrar por mercado")
     parser.add_argument("--output", default=OUTPUT_XLSX, help="Path del Excel de salida")
     parser.add_argument("--json", default=OUTPUT_JSON, help="Path del JSON de salida")

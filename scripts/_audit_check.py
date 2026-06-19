@@ -175,7 +175,7 @@ if os.path.exists(root_hist):
     wb.close()
 
 # Check url.json sources
-urls_data = json.load(open("urls.json"))
+urls_data = json.load(open("data/urls.json"))
 env_types = {}
 url_by_env = {"preview": [], "production": [], "other": []}
 for e in urls_data:

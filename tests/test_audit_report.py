@@ -6,7 +6,11 @@ Cubre funciones puras (sin I/O):
   - determine_status()
   - build_report()
 """
+import os
+import sys
 import unittest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 # El módulo depende de openpyxl, que no está en todos los entornos
 try:

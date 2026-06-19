@@ -19,7 +19,7 @@ import sys
 import unittest
 
 # Importar funciones del script principal
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from extract_aa import extract_fields
 from extract_browser import (
     _error_code_from_detail,

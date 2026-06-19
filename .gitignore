@@ -15,7 +15,7 @@ __pycache__/
 Thumbs.db
 
 # Generado
-urls.json
+data/urls.json
 
 # Coverage
 .coverage
@@ -26,10 +26,10 @@ urls.json
 # Entorno local (no comitear)
 .env
 .history/
-.menu-config.json
+config/.menu-config.json
 
 # Scripts de diagnóstico / debugging
-_check_cols.py
+scripts/_check_cols.py
 
 # Backups generados por save_workbook fallback
 *_browser*.xlsx

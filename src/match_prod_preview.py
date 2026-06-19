@@ -379,9 +379,9 @@ def main():
                         help="Historial de preview (prometido). Si se omite, se busca "
                              "{market}/historial_preview.xlsx automáticamente. "
                              "Si no existe, se usa expected.json como fallback.")
-    parser.add_argument("--mapping", default="url-mapping.json",
+    parser.add_argument("--mapping", default="data/url-mapping.json",
                         help="JSON mapeo preview→producción")
-    parser.add_argument("--expected", default="expected.json",
+    parser.add_argument("--expected", default="data/expected.json",
                         help="JSON con valores esperados (fallback si no hay preview)")
     parser.add_argument("--market", default="PR",
                         help="Código de mercado")

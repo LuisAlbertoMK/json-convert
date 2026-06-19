@@ -13,7 +13,7 @@ param(
 )
 
 # ── Config ──
-$ROOT = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ROOT = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $GREEN = "Green"; $RED = "Red"; $YELLOW = "Yellow"
 $CYAN = "Cyan"; $MAGENTA = "Magenta"
 
@@ -80,10 +80,10 @@ try {
 Write-Host "`n[3/5] Tests" -ForegroundColor $YELLOW
 if (-not $SkipTests -and $depsOk) {
     $testSuites = @(
-        @{File="test_parse.py"; Name="Unitarios (parse)"}
-        @{File="test_gen_urls.py"; Name="Unitarios (gen_urls)"}
-        @{File="test_extract_aa.py"; Name="Integracion (extract_aa)"}
-        @{File="test_integration.py"; Name="Integracion (browser)"}
+        @{File="tests\test_parse.py"; Name="Unitarios (parse)"}
+        @{File="tests\test_gen_urls.py"; Name="Unitarios (gen_urls)"}
+        @{File="tests\test_extract_aa.py"; Name="Integracion (extract_aa)"}
+        @{File="tests\test_integration.py"; Name="Integracion (browser)"}
     )
     $allPassed = $true; $totalTests = 0; $passedTests = 0; $failedTests = 0
 
