@@ -99,6 +99,28 @@ python -m pytest tests/ -v
 | skill | 9/10 | Clean code |
 | speed | 9/10 | Parallel extraction |
 | breadth | 9/10 | Test coverage |
+| **Global** | **8.8/10** | Score re-evaluado con evidencia |
+
+## Session 2: Lint cleanup & score re-eval (2026-06-18 ~19:00)
+
+### What was done
+- **Score re-evaluated**: 9.0 → 8.8 (más honesto, basado en evidencia real)
+- **Ruff cleanup**: 392 → 310 errores (-21%)
+  - F401: 8 unused imports removed
+  - F841: 4 unused variables removed (`context`, `aa_struct_col`, `mode`, `total_expected`)
+  - F821: `import argparse` moved to module level (was local inside function, used in type hints)
+  - RUF059/B007: 26 unused unpack/loop vars → `_` prefix
+  - RUF013: 4 implicit Optional → explicit Optional
+  - W293: 12 trailing whitespace in blank lines fixed
+  - Auto-fixes: I001, F541, Q000, RUF022, RUF100 (~15)
+
+### New Gotchas
+| Issue | Detail |
+|-------|--------|
+| **Bulk whitespace in PowerShell** | `Set-Content -NoNewline` corrupts shebang+docstring. Use Python `re.sub(r'[ \t]+$', '', content, flags=re.MULTILINE)` instead |
+| **git restore after edit** | Files restored from git lose manual edits. Re-apply after restore |
+| **Root urls.json** | Still exists untracked. After refactor, `data/urls.json` is the correct path. Root `urls.json` is stale. |
+| **Score inflation** | Auto-reported 9.0 was optimistic. Real score with evidence is 8.8. F821 was a latent bug. |
 
 ---
 
