@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import time as _time
+from typing import Any
 from copy import copy
 from datetime import datetime
 
@@ -82,12 +83,12 @@ def _safe_serialize(obj: object, depth: int = 0) -> object:
     return str(obj)[:200]
 
 
-def _set_col_widths(ws: object) -> None:
+def _set_col_widths(ws: Any) -> None:
     for col, w in [("A", 15), ("B", 15), ("C", 80), ("D", 80), ("E", 100), ("F", 80), ("G", 60)]:
         ws.column_dimensions[col].width = w
 
 
-def _auto_row_height(ws: object) -> None:
+def _auto_row_height(ws: Any) -> None:
     """Ajusta alto de filas segun el maximo de lineas JSON en cols 3-4-5-6-7."""
     JSON_COLS = [3, 4, 5, 6, 7]
     LINE_HEIGHT = 15
@@ -105,7 +106,7 @@ def _auto_row_height(ws: object) -> None:
             ws.row_dimensions[row].height = height
 
 
-def _write_cell(ws: object, row: int, col: int, value: object, wrap: bool = True) -> None:
+def _write_cell(ws: Any, row: int, col: int, value: object, wrap: bool = True) -> None:
     cell = ws.cell(row, col)
     cell.value = value
     cell.number_format = "@"
@@ -116,7 +117,7 @@ def _write_cell(ws: object, row: int, col: int, value: object, wrap: bool = True
 # VALIDACION DE SHEET
 # ═══════════════════════════════════════════════════════════════════════════
 
-def validate_sheet(ws: object) -> list:
+def validate_sheet(ws: Any) -> list:
     errores = []
     header = str(ws.cell(1, 2).value or "").strip().lower()
     if "pagina" not in header:
@@ -131,7 +132,7 @@ def validate_sheet(ws: object) -> list:
 # PERSISTENCIA
 # ═══════════════════════════════════════════════════════════════════════════
 
-def save_workbook(wb: object, path: str) -> str:
+def save_workbook(wb: Any, path: str) -> str:
     """Guarda con fallback si el archivo está bloqueado."""
     try:
         wb.save(path)
@@ -178,7 +179,7 @@ def _has_json_data(val: str) -> bool:
         return False
 
 
-def apply_data_fills(ws: object) -> None:
+def apply_data_fills(ws: Any) -> None:
     """Aplica colores de fondo a celdas de datos segun su contenido (JSON-aware)."""
     RED = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
     YELLOW = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
@@ -228,7 +229,7 @@ def _has_aa(col_e: object) -> bool:
         return False
 
 
-def split_aa_workbooks(wb: object, audit_date: str, output_dir: str) -> None:
+def split_aa_workbooks(wb: Any, audit_date: str, output_dir: str) -> None:
     """Crea con_aa.xlsx (tiene AA o digitalData) y sin_aa.xlsx (no tiene nada).
 
     Ahora considera AMBAS columnas: AA (col E) y digitalData (col D).
@@ -308,7 +309,7 @@ def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
     return wb, ws, audit_date, False
 
 
-def update_control(wb: object, audit_date: str, source: str, total: int,
+def update_control(wb: Any, audit_date: str, source: str, total: int,
                    ok_aa: int, ok_dd: int, errors: int, retries: int,
                    score: int, elapsed_s: float, workers: int) -> None:
     """Agrega fila al sheet _control."""
@@ -324,7 +325,7 @@ def update_control(wb: object, audit_date: str, source: str, total: int,
     ])
 
 
-def update_vars_sheet(wb: object, audit_date: str, rows_aa: list[tuple[int, dict]]) -> None:
+def update_vars_sheet(wb: Any, audit_date: str, rows_aa: list[tuple[int, dict]]) -> None:
     """Crea/actualiza sheet _vars con las eVars y props detectadas."""
     sheet_name = "_vars"
     if sheet_name in wb.sheetnames:

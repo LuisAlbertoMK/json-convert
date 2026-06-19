@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 
 import openpyxl
 from playwright.async_api import TimeoutError as PwTimeout
-from playwright.async_api import async_playwright
+from playwright.async_api import Page, async_playwright
 
 from json_convert import (  # noqa: F401 — re-export for backwards compat
     AA_DOMAINS,
@@ -118,7 +118,7 @@ async def _fetch_html_via_http(url: str, timeout_ms: int) -> str:
 
 
 async def process_url(
-    page: object, row: int, url: str,
+    page: Page, row: int, url: str,
     wait_after: int = 4,
     timeout_ms: int = 35000,
     max_retry: int = 1,

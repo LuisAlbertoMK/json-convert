@@ -10,7 +10,19 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any, Protocol
 from urllib.parse import parse_qs, urlparse
+
+
+class PageProtocol(Protocol):
+    """Protocolo mínimo para Playwright Page (evita dependencia de stubs externos).
+
+    ponyatil: Solo cubre evaluate + query_selector — lo mínimo que usamos.
+    Si se agregan más métodos de Page, expandir aquí.
+    """
+
+    async def evaluate(self, expression: str, arg: Any = None) -> Any: ...
+    async def query_selector(self, selector: str) -> Any | None: ...
 
 # Dominios conocidos de Adobe Analytics para captura de beacons
 AA_DOMAINS = [
@@ -62,7 +74,7 @@ def parse_aa_beacon(beacon_url: str, page_title: str = "") -> dict:
     if aamlh:
         visitor["audienceManagerHint"] = aamlh
 
-    browser = {}
+    browser: dict[str, object] = {}
     res = first("res")
     if res:
         browser["resolution"] = res
@@ -127,7 +139,7 @@ def build_aa_from_s(s_obj: dict, page_title: str = "") -> dict:
     }
 
 
-async def extract_s_object(page: object) -> dict | None:
+async def extract_s_object(page: PageProtocol) -> dict | None:
     """Lee window.s desde el navegador."""
     try:
         s_obj = await page.evaluate("""() => {
@@ -150,7 +162,7 @@ async def extract_s_object(page: object) -> dict | None:
         return None
 
 
-async def extract_digital_data(page: object) -> dict | None:
+async def extract_digital_data(page: PageProtocol) -> dict | None:
     """Extrae data layer probando varios nombres con logging detallado."""
     for var_name in DATA_LAYER_NAMES:
         try:
@@ -169,7 +181,7 @@ async def extract_digital_data(page: object) -> dict | None:
     return None
 
 
-async def debug_dump_available_globals(page: object) -> None:
+async def debug_dump_available_globals(page: PageProtocol) -> None:
     """Dumpea TODAS las variables globales del window para debug.
     Solo se ejecuta en modo verbose. Busca específicamente objetos
     que parezcan data layers."""
@@ -209,7 +221,7 @@ async def debug_dump_available_globals(page: object) -> None:
         logging.debug("debug_dump_globals falló: %s", e)
 
 
-async def extract_title(page: object) -> str:
+async def extract_title(page: PageProtocol) -> str:
     """Extrae el título de la página."""
     try:
         return (await page.evaluate("document.title") or "").strip()
@@ -218,7 +230,7 @@ async def extract_title(page: object) -> str:
         return ""
 
 
-async def try_dismiss_cookie_consent(page: object) -> bool:
+async def try_dismiss_cookie_consent(page: PageProtocol) -> bool:
     """Intenta cerrar banners de consentimiento comunes."""
     selectors = [
         "button:has-text('Aceptar')", "button:has-text('Accept')",

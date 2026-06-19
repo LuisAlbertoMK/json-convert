@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import Any
 from collections.abc import Awaitable, Callable
 
 from json_convert.aa_parser import AA_DOMAINS
@@ -48,7 +49,7 @@ async def route_beacons(route: object, request: object) -> None:
 
 
 async def write_result(
-    ws: object,
+    ws: Any,
     result: dict,
     metrics: dict,
     excel_lock: asyncio.Lock,
@@ -151,7 +152,7 @@ async def run_pipeline(
     process_func: Callable[[int, str], Awaitable[dict]],
     urls: list[tuple[int, str]],
     workers: int,
-    ws: object,
+    ws: Any,
     output_path: str,
     show_progress: bool = False,
 ) -> tuple[list[dict], list[dict], dict]:

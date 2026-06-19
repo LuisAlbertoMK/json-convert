@@ -40,7 +40,7 @@ def _error_code_from_detail(err: str) -> str:
 
 def classify_errors(errors_detail: list[dict]) -> dict[str, list[int]]:
     """Agrupa errores por categoría para output legible."""
-    categories = {
+    categories: dict[str, list[int]] = {
         "HTTP 403 (acceso denegado)": [],
         "Timeout": [],
         "Sin dato AA (no beacon)": [],
