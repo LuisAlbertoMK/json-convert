@@ -83,8 +83,8 @@ url-mapping.json  ──→  match_prod_preview.py           ──→  PR/match
 ## 🧪 Testing
 
 ```bash
-python -m unittest discover -p "test_*.py" -v
-# 157 tests, all passing (as of session end)
+python -m pytest tests/ -v
+# 157 tests, all passing
 ```
 
 ---
@@ -99,3 +99,58 @@ python -m unittest discover -p "test_*.py" -v
 | skill | 9/10 | Clean code |
 | speed | 9/10 | Parallel extraction |
 | breadth | 9/10 | Test coverage |
+
+---
+
+## 🏗️ Project Structure (post-refactor)
+
+This session: reorganized 55-entry root into clean hierarchy.
+
+```
+json-convert/
+├── src/               ← Core pipeline scripts
+│   ├── menu.py
+│   ├── extract_browser.py
+│   ├── extract_aa.py
+│   ├── audit_report.py
+│   ├── generate_migration_catalog.py
+│   └── match_prod_preview.py
+├── scripts/           ← Utilities & diagnostics
+│   ├── _audit_check.py, _gen_urls.py, run.ps1, ...
+├── tests/             ← 6 test files (157 tests)
+├── config/            ← Config files (audit.json, .menu-config.json, requirements.txt)
+├── data/              ← JSON source data
+├── json_convert/      ← Python package (stdlib + openpyxl)
+├── docs/              ← Documentation
+├── PR/                ← Market output
+├── logs/              ← Run logs
+└── output/            ← Generated files
+```
+
+### Key changes for agents
+
+| Before | After |
+|--------|-------|
+| `python menu.py` | `python src/menu.py` |
+| `python extract_browser.py` | `python src/extract_browser.py` |
+| `python _gen_urls.py` | `python scripts/_gen_urls.py` |
+| `python -m pytest test_*.py` | `python -m pytest tests/` |
+| `audit.json` | `config/audit.json` |
+| `urls.json` | `data/urls.json` |
+| `url-mapping.json` | `data/url-mapping.json` |
+| `run.ps1` | `scripts/run.ps1` |
+
+### Tests import paths
+
+Each test in `tests/` uses `sys.path.insert` to find modules:
+- `src/` modules: `sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))`
+- `scripts/` modules: `sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))`
+- `json_convert/` package: `sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))`
+
+### What was NOT moved (root)
+
+- `pyproject.toml` — tooling requirement (pytest, ruff, mypy)
+- `.pre-commit-config.yaml` — pre-commit needs it at root
+- `install.bat`, `run.bat` — entry points
+- `README.md`, `INSTRUCCIONES.txt`, `DECISIONES-CONCURRENCIA.md`, etc. — docs
+- `RevisionManual.xlsx` — input data
