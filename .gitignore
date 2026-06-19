@@ -17,6 +17,9 @@ Thumbs.db
 # Generado
 data/urls.json
 
+# Pytest cache
+.pytest_cache/
+
 # Coverage
 .coverage
 
