@@ -5,6 +5,10 @@ Funciones para calcular score de auditoría y clasificar errores
 de Adobe Analytics de forma estandarizada.
 """
 
+from __future__ import annotations
+
+from json_convert.types import ErrorDetail, PipelineMetrics, UrlResult
+
 # Códigos de error estándar para toda la aplicación
 ERROR_CODES = {
     "TIMEOUT":       "Tiempo de espera agotado al navegar",
@@ -38,7 +42,7 @@ def _error_code_from_detail(err: str) -> str:
     return "UNKNOWN"
 
 
-def classify_errors(errors_detail: list[dict]) -> dict[str, list[int]]:
+def classify_errors(errors_detail: list[ErrorDetail]) -> dict[str, list[int]]:
     """Agrupa errores por categoría para output legible."""
     categories: dict[str, list[int]] = {
         "HTTP 403 (acceso denegado)": [],
@@ -66,7 +70,7 @@ def classify_errors(errors_detail: list[dict]) -> dict[str, list[int]]:
 # SCORE
 # ═══════════════════════════════════════════════════════════════════════════
 
-def compute_score(metrics: dict) -> int:
+def compute_score(metrics: PipelineMetrics) -> int:
     """Score global 0-100 de la corrida."""
     success_rate = (metrics["ok_aa"] / max(metrics["total"], 1)) * 100
     dd_rate = (metrics["ok_dd"] / max(metrics["total"], 1)) * 100
@@ -83,7 +87,7 @@ def compute_score(metrics: dict) -> int:
     )
 
 
-def compute_url_score(result: dict) -> int:
+def compute_url_score(result: UrlResult) -> int:
     """Score 0-100 por URL individual."""
     s = 0
     if result.get("digitaldata"):

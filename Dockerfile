@@ -1,5 +1,5 @@
-# json-convert — Extracción de Adobe Analytics con Playwright
-# Uso: docker build -t json-convert . && docker run --rm json-convert --help
+# json-convert — Extracción de Adobe Analytics con Playwright (Chromium + Firefox)
+# Uso: docker build -t ghcr.io/luisalbertomk/json-convert:latest . && docker run --rm ghcr.io/luisalbertomk/json-convert:latest --help
 
 FROM python:3.12-slim
 
@@ -33,8 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copiar e instalar dependencias Python
 COPY config/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
-    playwright install chromium && \
-    playwright install-deps chromium
+    playwright install chromium firefox && \
+    playwright install-deps chromium firefox
 
 # Copiar código
 COPY . .

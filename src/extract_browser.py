@@ -305,8 +305,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cache-ttl", type=int, default=86400,
                    help="TTL de caché en segundos (default: 86400 = 24h)")
     p.add_argument("--clear-cache", action="store_true", help="Limpiar caché y salir")
-    p.add_argument("--browser", default="chromium", choices=("chromium", "firefox"),
-                   help="Browser engine: chromium (default) o firefox")
+    p.add_argument("--browser", default="firefox", choices=("chromium", "firefox"),
+                   help="Browser engine: firefox (default, evita ERR_ABORTED) o chromium (para produccion con Chrome real)")
     return p
 
 

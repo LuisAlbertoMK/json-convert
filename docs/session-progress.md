@@ -13,12 +13,12 @@
 
 | Area | Descripción | Prioridad |
 |------|-------------|-----------|
-| **Evaluar Firefox como default** | Firefox no sufre ERR_ABORTED (doc en `docs/fallback-err-aborted.md`). Pendiente evaluar performance/estabilidad vs Chromium | Media |
-| **Decisiones de negocio** | 4 puntos de `resumen-errores.md`: URLs legal/privacy sin AA, ford.mx, score por mercado, línea de aceptación | Media |
-| **Anotaciones restantes** | `metrics.py`, `extract_browser.py`, `audit_report.py` sin TypedDict | Baja |
-| **CI/CD Docker** | Publicar imagen en GHCR, integrar en workflow | Baja |
+| ✅ **Firefox como default** | Default cambiado a `firefox`. Dockerfile ahora instala ambos browsers. | Hecho |
+| ✅ **README actualizado** | Paths, flags (`--browser`, `--wait-after` default 2s), estructura del proyecto | Hecho |
+| ✅ **TypedDict metrics.py** | `compute_score(PipelineMetrics)`, `compute_url_score(UrlResult)`, `classify_errors(list[ErrorDetail])` | Hecho |
+| ✅ **CI/CD Docker** | Workflow `docker-publish.yml` creado (GHCR). Requiere `GITHUB_TOKEN` con `packages: write` | Hecho |
+| **Decisiones de negocio** | 4 puntos: legal/privacy→dejar como AA, ford.mx→agregar a MX, score por mercado (pendiente análisis), línea aceptación 90 | Parcial |
 | **Mypy full repo** | Solo 4 módulos. Correr `mypy src/` cuando estén todos | Baja |
-| **README desactualizado** | vs estructura actual (src/, scripts/, json_convert/) | Baja |
 
 ## Métricas
 
