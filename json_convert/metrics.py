@@ -35,7 +35,7 @@ def _error_code_from_detail(err: str) -> str:
         return "NETWORK_ERROR"
     if "naveg" in err_lower or "nav" in err_lower:
         return "NAV_ERROR"
-    return "NETWORK_ERROR"
+    return "UNKNOWN"
 
 
 def classify_errors(errors_detail: list[dict]) -> dict[str, list[int]]:

@@ -19,12 +19,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-# Importar funciones del script principal
+# Importar desde el paquete canónico
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from extract_browser import (
+from json_convert import (
     CONTROL_HEADERS,
     SHEET_HEADERS,
-    _error_code_from_detail,
     classify_errors,
     compute_score,
     save_workbook,
@@ -33,6 +32,7 @@ from extract_browser import (
     validate_sheet,
     validate_url,
 )
+from json_convert.metrics import _error_code_from_detail
 
 # ═══════════════════════════════════════════════════════════════════════════
 # HELPERS
@@ -436,7 +436,7 @@ class TestWriteResultIntegration(unittest.TestCase):
         saved_count = [0]
 
         async def run():
-            from extract_browser import write_result
+            from json_convert import write_result
             await write_result(
                 self.ws, result, metrics, lock,
                 self.output_path, saved_count,

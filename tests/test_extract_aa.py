@@ -12,7 +12,8 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-from extract_aa import ALL_FIELDS, DEFAULT_KEEP, _save_workbook, extract_fields
+from extract_aa import ALL_FIELDS, DEFAULT_KEEP, extract_fields
+from json_convert.excel import save_workbook
 
 SAMPLE_AA_JSON = {
     "solution": "analytics",
@@ -142,7 +143,7 @@ class TestExtractAAPipeline(unittest.TestCase):
             ws.cell(row, aa_dst_col).value = json.dumps(extracted, indent=2, ensure_ascii=False)
             total += 1
 
-        _save_workbook(wb, self.xlsx_path)
+        save_workbook(wb, self.xlsx_path)
         wb.close()
         return {"total": total, "errores": errores}
 
@@ -241,7 +242,7 @@ class TestExtractAAPipeline(unittest.TestCase):
         self.assertEqual(result["total"], 1)
         self.assertEqual(len(result["errores"]), 0)
 
-    # ── _save_workbook ──
+    # ── save_workbook ──
 
     def test_save_workbook_permission_error(self):
         """save_workbook con PermissionError → fallback."""
@@ -255,7 +256,6 @@ class TestExtractAAPipeline(unittest.TestCase):
         wb.close()
 
         wb2 = openpyxl.load_workbook(path)
-        # Forzar PermissionError en save con parche
         real_save = wb2.save
         call_count = [0]
 
@@ -267,9 +267,9 @@ class TestExtractAAPipeline(unittest.TestCase):
 
         from unittest.mock import patch
         with patch.object(wb2, "save", side_effect=mock_save):
-            result = _save_workbook(wb2, path)
+            result = save_workbook(wb2, path)
         self.assertNotEqual(result, path)
-        self.assertTrue(result.endswith("_limpio.xlsx"))
+        self.assertTrue(result.endswith("_browser.xlsx"))
         wb2.close()
 
     def test_save_workbook_normal(self):
@@ -280,7 +280,7 @@ class TestExtractAAPipeline(unittest.TestCase):
         wb.remove(wb.active)
         ws = wb.create_sheet("test")
         ws.cell(1, 1).value = "data"
-        result = _save_workbook(wb, path)
+        result = save_workbook(wb, path)
         self.assertEqual(result, path)
         self.assertTrue(os.path.exists(path))
         wb.close()

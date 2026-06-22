@@ -18,12 +18,6 @@ from json_convert.excel import (
     INPUT_FILE,
     SAVE_EVERY_N,
     SHEET_HEADERS,
-    _auto_row_height,
-    _has_json_data,
-    _is_json_error,
-    _pretty_json,
-    _set_col_widths,
-    _write_cell,
     apply_data_fills,
     print_progress,
     save_workbook,
@@ -35,13 +29,11 @@ from json_convert.excel import (
 )
 from json_convert.metrics import (
     ERROR_CODES,
-    _error_code_from_detail,
     classify_errors,
     compute_score,
     compute_url_score,
 )
 from json_convert.pipeline import (
-    route_beacons,
     run_pipeline,
     write_result,
 )
@@ -65,13 +57,6 @@ __all__ = [
     "SHEET_HEADERS",
     "VALID_URL_SCHEMES",
     "UrlCache",
-    "_auto_row_height",
-    "_error_code_from_detail",
-    "_has_json_data",
-    "_is_json_error",
-    "_pretty_json",
-    "_set_col_widths",
-    "_write_cell",
     "apply_data_fills",
     "build_aa_from_s",
     "classify_errors",
@@ -83,7 +68,6 @@ __all__ = [
     "extract_title",
     "parse_aa_beacon",
     "print_progress",
-    "route_beacons",
     "run_pipeline",
     "sanitize_url_for_log",
     "save_workbook",

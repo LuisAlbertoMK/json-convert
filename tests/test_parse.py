@@ -18,11 +18,11 @@ import os
 import sys
 import unittest
 
-# Importar funciones del script principal
+# Importar desde los paquetes canónicos
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from extract_aa import extract_fields
-from extract_browser import (
-    _error_code_from_detail,
+from json_convert import (
     build_aa_from_s,
     classify_errors,
     compute_score,
@@ -31,6 +31,7 @@ from extract_browser import (
     sanitize_url_for_log,
     validate_url,
 )
+from json_convert.metrics import _error_code_from_detail
 
 # ═══════════════════════════════════════════════════════════════════════════
 # BEACONS DE EJEMPLO (formato real de Adobe Analytics)
@@ -551,8 +552,8 @@ class TestErrorCodeFromDetail(unittest.TestCase):
         self.assertEqual(_error_code_from_detail(None), "UNKNOWN")  # type: ignore
 
     def test_unknown_error(self):
-        """Texto genérico → NETWORK_ERROR (fallback)."""
-        self.assertEqual(_error_code_from_detail("something weird happened"), "NETWORK_ERROR")
+        """Texto genérico → UNKNOWN (fallback)."""
+        self.assertEqual(_error_code_from_detail("something weird happened"), "UNKNOWN")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

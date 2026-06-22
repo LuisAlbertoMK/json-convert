@@ -28,57 +28,14 @@ import sys
 import openpyxl
 from openpyxl.styles import Alignment, PatternFill
 
+from json_convert.excel import _auto_row_height, save_workbook
+
 DEFAULT_KEEP = ["page", "request", "props", "evars"]
 ALL_FIELDS = [
     "solution", "page", "request", "visitor", "hit", "page_data",
     "browser", "events", "eVars", "evars", "props",
     "products", "frame", "adobe", "pageName", "channel", "page_attributes", "environment",
 ]
-
-
-def _auto_row_height(ws):
-    """Ajusta alto de filas segun el maximo de lineas JSON en cols JSON (3-7)."""
-    JSON_COLS = [3, 4, 5, 6, 7]
-    LINE_HEIGHT = 15  # puntos por linea aprox para Calibri 11
-    MAX_HEIGHT = 409  # limite Excel
-    for row in range(2, ws.max_row + 1):
-        max_lines = 1
-        for col in JSON_COLS:
-            val = ws.cell(row, col).value
-            if val:
-                lines = str(val).count("\n") + 1
-                max_lines = max(max_lines, lines)
-        height = min(max_lines * LINE_HEIGHT, MAX_HEIGHT)
-        current = ws.row_dimensions[row].height
-        if current is None or height > current:
-            ws.row_dimensions[row].height = height
-
-
-def _save_workbook(wb, path):
-    try:
-        wb.save(path)
-        return path
-    except PermissionError:
-        name, ext = os.path.splitext(path)
-        fallback = f"{name}_limpio{ext}"
-        try:
-            wb.save(fallback)
-            logging.warning("Archivo bloqueado, guardado como %s", fallback)
-            return fallback
-        except PermissionError:
-            import time
-            for attempt in range(3):
-                try:
-                    time.sleep(2)
-                    wb.save(path)
-                    logging.info("Recuperado tras %ds de espera", (attempt + 1) * 2)
-                    return path
-                except PermissionError:
-                    continue
-            fallback2 = f"{name}_limpio{int(time.time())}{ext}"
-            wb.save(fallback2)
-            logging.warning("Lock persistente, guardado como %s", fallback2)
-            return fallback2
 
 
 def extract_fields(data: dict, keep: list[str]) -> dict:
@@ -278,7 +235,7 @@ def main():
     _auto_row_height(ws)
 
     # Guardar
-    out = _save_workbook(wb, args.input)
+    out = save_workbook(wb, args.input)
     wb.close()
 
     logging.info("Guardado: %s", out)

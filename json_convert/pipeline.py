@@ -13,10 +13,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any
 from collections.abc import Awaitable, Callable
+from typing import Any
 
-from json_convert.aa_parser import AA_DOMAINS
 from json_convert.excel import (
     SAVE_EVERY_N,
     _pretty_json,
@@ -28,20 +27,6 @@ from json_convert.metrics import (
     _error_code_from_detail,
     compute_url_score,
 )
-
-# ═══════════════════════════════════════════════════════════════════════════
-# BEACON ROUTING — intercepta requests a dominios AA
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-async def route_beacons(route: object, request: object) -> None:
-    """Intercepta requests a dominios AA (permite todo el tráfico)."""
-    url_lower = (request.url or "").lower() if hasattr(request, "url") else ""
-    if any(domain in url_lower for domain in AA_DOMAINS):
-        await route.continue_()
-    else:
-        await route.continue_()
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # WRITE RESULT — escribe una URL en Excel con métricas + auto-save

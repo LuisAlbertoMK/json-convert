@@ -14,6 +14,7 @@ import argparse
 # Force UTF-8 stdout for ANSI codes to work on Windows
 import io
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -38,7 +39,7 @@ if not _EXTRACT_BROWSER:
             _cfg = json.loads(_MENU_CONFIG_PATH.read_text(encoding="utf-8"))
             _EXTRACT_BROWSER = (_cfg.get("browser") or "").strip().lower()
     except Exception:
-        pass
+        logging.debug("Failed to load .menu-config.json")
 
 
 def _browser_args() -> list[str]:
@@ -527,27 +528,7 @@ def op_limpieza() -> None:
     print(_c("green", "\n  [OK] Limpieza finalizada."))
 
 
-def op_prune() -> None:
-    """Opcion 8: Limpiar columnas muertas de Excel."""
-    header("LIMPIAR COLUMNAS - prune_excel_columns.py")
 
-    market, _ = choose_market(source="detect")
-    if market is None:
-        print(_c("yellow", "  No se encontraron archivos Excel."))
-        return
-
-    if market == ALL_MARKETS:
-        cmd = [sys.executable, "scripts/prune_excel_columns.py"]
-        label = "Todos los mercados"
-    else:
-        cmd = [sys.executable, "scripts/prune_excel_columns.py", "--dir", market]
-        label = "Mercado: " + market
-
-    code = run_step(cmd, label, timeout=30)
-    if code == 0:
-        print(_c("green", "\n  [OK] Columnas limpiadas."))
-    else:
-        print(_c("red", "\n  [ERROR] Fallo la limpieza."))
 
 
 def op_tests() -> None:
@@ -736,7 +717,7 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
 
     # Paso 1: Correr tests
     print()
-    print(_c("cyan", "  [1/8] Ejecutando tests..."))
+    print(_c("cyan", "  [1/7] Ejecutando tests..."))
     rc = run_step([sys.executable, "-m", "pytest", "--tb=short", "-q"],
                   "pytest --tb=short -q", timeout=120)
     if rc != 0:
@@ -752,7 +733,7 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
 
     # Paso 2: Verificar urls.json
     print()
-    print(_c("cyan", "  [2/8] Verificando entorno..."))
+    print(_c("cyan", "  [2/7] Verificando entorno..."))
     urls_path = os.path.join(BASE_DIR, "data/urls.json")
     has_urls = os.path.exists(urls_path)
     if not has_urls:
@@ -774,7 +755,7 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
     # Paso 3: Auditoria (por mercado)
     # ── ¿Saltar si ya hay historiales de corridas anteriores? ──
     print()
-    print(_c("cyan", "  [3/8] Auditoria (extract_browser)..."))
+    print(_c("cyan", "  [3/7] Auditoria (extract_browser)..."))
     existing_historiales = detect_markets()
     skip_audit = False
     if existing_historiales and has_urls:
@@ -812,7 +793,6 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
         print(_c("red", "  ⚠ Auditoría falló — revisá VPN/conexión a las URLs."))
         print(_c("yellow", "    Saltando post-proceso, limpieza, reporte y catálogo."))
         results.append(("Post-proceso", -2))
-        results.append(("Prune columnas", -2))
         results.append(("Reporte de fallos", -2))
         results.append(("Catálogo migración", -2))
         # Ir directo a resultados
@@ -820,7 +800,7 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
     else:
         # Paso 4: Post-procesar
         print()
-        print(_c("cyan", "  [4/8] Post-procesando (extract_aa)..."))
+        print(_c("cyan", "  [4/7] Post-procesando (extract_aa)..."))
         all_markets = detect_markets()
         # Filtrar solo los markets objetivo
         post_markets = [(m, p) for m, p in all_markets if m in markets_to_run or target_market == ALL_MARKETS]
@@ -835,24 +815,17 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
             print(_c("yellow", "    No hay archivos de auditoria para post-procesar."))
             results.append(("Post-proceso", -1))
 
-        # Paso 5: Limpiar columnas muertas
+        # Paso 5: Reporte de fallos (global + por mercado)
         print()
-        print(_c("cyan", "  [5/8] Limpiando columnas inutiles..."))
-        rc = run_step([sys.executable, "scripts/prune_excel_columns.py"],
-                      "scripts/prune_excel_columns.py", timeout=30)
-        results.append(("Prune columnas", rc))
-
-        # Paso 6: Reporte de fallos (global + por mercado)
-        print()
-        print(_c("cyan", f"  [6/8] Generando reporte de fallos ({entorno})..."))
+        print(_c("cyan", f"  [5/7] Generando reporte de fallos ({entorno})..."))
         rc = run_step(
             [sys.executable, "src/audit_report.py", "--urls", "data/urls.json", "--entorno", entorno],
             "src/audit_report.py", timeout=600)
         results.append(("Reporte de fallos", rc))
 
-        # Paso 7: Catalogo de migracion
+        # Paso 6: Catalogo de migracion
         print()
-        print(_c("cyan", "  [7/8] Catalogo de migracion..."))
+        print(_c("cyan", "  [6/7] Catalogo de migracion..."))
         mapping_path = os.path.join(BASE_DIR, "data/url-mapping.json")
         if not os.path.exists(mapping_path):
             rp = os.path.join(BASE_DIR, "RevisionManual.xlsx")
@@ -883,9 +856,9 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
                     "Catalogo " + m + "...", timeout=60)
                 results.append(("Catalogo " + m, rc))
 
-    # Paso 8: Resultados
+    # Paso 7: Resultados
     print()
-    print(_c("cyan", "  [8/8] Resultados..."))
+    print(_c("cyan", "  [7/7] Resultados..."))
     report_path = os.path.join(BASE_DIR, "reporte_auditoria.xlsx")
     if os.path.exists(report_path):
         if confirm("  Abrir el reporte?", default=True):
@@ -957,10 +930,9 @@ def show_menu() -> int:
     print("  " + _c("bold", "5") + ") " + _c("yellow", "[C]") + "  Solo limpieza        run.ps1")
     print("  " + _c("bold", "6") + ") " + _c("blue", "[V]") + "  Ver resultados       abrir Excel")
     print("  " + _c("bold", "7") + ") " + _c("magenta", "[M]") + "  Catalogo migracion   generate_migration_catalog.py")
-    print("  " + _c("bold", "8") + ") " + _c("yellow", "[P]") + "  Limpiar columnas     prune_excel_columns.py")
-    print("  " + _c("bold", "9") + ") " + _c("green", "[T]") + "  Ejecutar tests       pytest")
-    print("  " + _c("bold", "10") + ") " + _c("magenta", "[D]") + " Match prod vs preview  comparar prometido vs entregado")
-    print("  " + _c("bold", "11") + ") " + _c("blue", "[S]") + "  Ver resumen catálogo   abrir .html")
+    print("  " + _c("bold", "8") + ") " + _c("green", "[T]") + "  Ejecutar tests       pytest")
+    print("  " + _c("bold", "9") + ") " + _c("magenta", "[D]") + " Match prod vs preview  comparar prometido vs entregado")
+    print("  " + _c("bold", "10") + ") " + _c("blue", "[S]") + "  Ver resumen catálogo   abrir .html")
     print()
     separator("-", 55)
     print("  " + _c("dim", "0") + ") " + _c("dim", "x  Salir"))
@@ -989,12 +961,10 @@ def run_option(opt: int, non_interactive: bool = False) -> bool:
     elif opt == 7:
         op_catalogo(non_interactive=non_interactive)
     elif opt == 8:
-        op_prune()
-    elif opt == 9:
         op_tests()
-    elif opt == 10:
+    elif opt == 9:
         op_match()
-    elif opt == 11:
+    elif opt == 10:
         op_ver_resumen()
     elif opt == 0:
         print()
@@ -1037,12 +1007,12 @@ if __name__ == "__main__":
 
     # Modo directo --run
     if args.run:
-        opt_map = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8,
-                   "9": 9, "10": 10, "11": 11, "0": 0, "auto": 1}
+        opt_map = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
+                   "8": 8, "9": 9, "10": 10, "0": 0, "auto": 1}
         opt = opt_map.get(args.run, -1)
         if opt < 0:
             print(_c("red", "[ERROR] Opcion invalida: " + args.run))
-            print("  Valores validos: 1-11, 0, 'auto'")
+            print("  Valores validos: 1-10, 0, 'auto'")
             sys.exit(1)
 
         # Modo no-interactivo: respuestas automaticas

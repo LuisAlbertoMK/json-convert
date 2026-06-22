@@ -19,59 +19,30 @@ import time
 from datetime import datetime, timedelta
 
 import openpyxl
-from playwright.async_api import TimeoutError as PwTimeout
 from playwright.async_api import Page, async_playwright
+from playwright.async_api import TimeoutError as PwTimeout
 
-from json_convert import (  # noqa: F401 — re-export for backwards compat
+from json_convert import (
     AA_DOMAINS,
-    ALLOWED_HOSTNAME_SUFFIXES,
-    CONTROL_HEADERS,
-    DATA_FILLS,
-    DATA_LAYER_NAMES,
-    ERROR_CODES,
-    HEADER_FILLS,
     INPUT_FILE,
     SAVE_EVERY_N,
-    SHEET_HEADERS,
-    VALID_URL_SCHEMES,
-    _auto_row_height,
-    _error_code_from_detail,
-    _has_json_data,
-    _is_json_error,
-    _pretty_json,
-    _set_col_widths,
-    _write_cell,
     apply_data_fills,
-    build_aa_from_s,
     classify_errors,
     compute_score,
-    compute_url_score,
-    debug_dump_available_globals,
-    extract_digital_data,
-    extract_s_object,
-    extract_title,
-    parse_aa_beacon,
-    print_progress,
     sanitize_url_for_log,
     save_workbook,
     setup_multisheet,
     split_aa_workbooks,
-    try_dismiss_cookie_consent,
     update_control,
     update_vars_sheet,
     validate_sheet,
-    validate_url,
 )
+from json_convert.browser import _shutdown_flag, process_url
 from json_convert.cache import UrlCache
+from json_convert.excel import _auto_row_height
 from json_convert.pipeline import (
-    route_beacons,
     run_pipeline,
-    write_result,  # noqa: F401 — re-export for backwards compat (test imports)
 )
-
-# ── Graceful shutdown ──
-_shutdown_flag = False
-"""Global flag: set by signal handler to request graceful shutdown."""
 
 
 def _request_shutdown(signum: int | None = None, frame: object | None = None) -> None:
@@ -81,220 +52,15 @@ def _request_shutdown(signum: int | None = None, frame: object | None = None) ->
         logging.warning("Señal %s recibida. Terminando gracefulmente...", signum)
 
 
-# write_result, route_beacons, run_pipeline movidos a json_convert/pipeline.py
-# Se importan arriba desde json_convert.pipeline
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# WORKER — procesa UNA URL, devuelve resultado
-# ═══════════════════════════════════════════════════════════════════════════
-
+# ── BEACON_REGEX (compilado acá por conveniencia del entry point) ──
 BEACON_REGEX = re.compile(
     r'https?://[^"\'\s]*(?:'
     + "|".join(re.escape(d) for d in AA_DOMAINS)
     + r')[^"\'\s]*',
     re.IGNORECASE,
 )
-
-
-async def _fetch_html_via_http(url: str, timeout_ms: int) -> str:
-    """Fetch HTML via stdlib urllib — sin dependencias extra.
-    Útil como fallback cuando Playwright goto falla con ERR_ABORTED."""
-    import urllib.error
-    import urllib.request
-
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                          "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "es-PR,es;q=0.9,en;q=0.8",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=max(1, timeout_ms // 1000)) as resp:
-        raw = resp.read()
-    return raw.decode("utf-8", errors="replace")
-
-
-async def process_url(
-    page: Page, row: int, url: str,
-    wait_after: int = 4,
-    timeout_ms: int = 35000,
-    max_retry: int = 1,
-) -> dict:
-    """
-    Navega a una URL, captura beacons + data layer.
-    Devuelve dict con resultados.
-    """
-    if _shutdown_flag:
-        return {"url": url, "row": row, "error": "Shutdown requested"}
-
-    start = time.perf_counter()
-    err = validate_url(url)
-    if err:
-        return {"url": url, "row": row, "error": err}
-
-    last_dd = None
-    last_s = None
-    last_title = ""
-    navigation_error = ""
-
-    for attempt in range(1 + max(0, max_retry)):
-        if _shutdown_flag:
-            break
-        try:
-            # Estrategia progresiva de wait_until:
-            #   0: domcontentloaded (rápido, default)
-            #   1: commit (solo respuesta inicial, evita ERR_ABORTED)
-            #   2+: load (espera todo, para páginas lentas)
-            _wait_strategies = ["domcontentloaded", "commit", "load"]
-            _wait = _wait_strategies[min(attempt, len(_wait_strategies) - 1)]
-            # Detectar popups via callback (evita el timeout fijo de expect_page)
-            popup_page = None
-            def _on_popup(p: object) -> None:
-                nonlocal popup_page
-                popup_page = p
-            page.on("popup", _on_popup)
-
-            await page.goto(url, wait_until=_wait, timeout=timeout_ms)
-
-            if popup_page:
-                await popup_page.close()
-                logging.debug("Popup cerrado: %s", url)
-            page.remove_listener("popup", _on_popup)
-
-            await page.wait_for_timeout(wait_after * 1000)
-
-            # Paralelizar extracciones independientes — ahorra ~2 RTT por URL
-            _extracted = await asyncio.gather(
-                extract_title(page),
-                extract_digital_data(page),
-                extract_s_object(page),
-                return_exceptions=True,
-            )
-            last_title = _extracted[0] if not isinstance(_extracted[0], Exception) else ""
-            last_dd = _extracted[1] if not isinstance(_extracted[1], Exception) else None
-            last_s = _extracted[2] if not isinstance(_extracted[2], Exception) else None
-            # En verbose, dumpear variables globales si no se encontró digitalData
-            if last_dd is None and logging.getLogger().isEnabledFor(logging.DEBUG):
-                await debug_dump_available_globals(page)
-            await try_dismiss_cookie_consent(page)
-            await page.wait_for_timeout(1000)
-
-            if not _shutdown_flag:
-                navigation_error = ""
-                break
-
-        except PwTimeout:
-            navigation_error = "Timeout al navegar"
-            logging.info("Timeout en intento %d: %s", attempt + 1, sanitize_url_for_log(url)[:60])
-            if attempt < max_retry:
-                # ⚠ page puede estar cerrada si el browser perdió conexión
-                try:
-                    await page.wait_for_timeout(2000)
-                except Exception:
-                    break
-        except asyncio.CancelledError:
-            navigation_error = "Tarea cancelada"
-            logging.info("Cancelled en intento %d: %s", attempt + 1, sanitize_url_for_log(url)[:60])
-            raise  # No reintentar — propagar cancelación
-        except Exception as e:
-            navigation_error = f"Error al navegar: {e}"
-            logging.info("Error en intento %d: %s", attempt + 1, sanitize_url_for_log(url)[:60])
-
-            # ERR_ABORTED: página abortó navegación, pero puede tener DOM parcial
-            if "ERR_ABORTED" in str(e):
-                try:
-                    last_dd = await extract_digital_data(page)
-                    last_title = await extract_title(page)
-                    if last_dd:
-                        logging.debug(
-                            "ERR_ABORTED pero se extrajo digitalData "
-                            "del DOM parcial: %s", url[:80]
-                        )
-                        navigation_error = ""  # recuperado
-                        break
-                except Exception:
-                    pass
-
-            if attempt < max_retry:
-                # ⚠ page puede estar cerrada si el browser perdió conexión
-                try:
-                    await page.wait_for_timeout(2000)
-                except Exception:
-                    break
-
-    # ── Fallback: fetch + setContent cuando goto falla (ERR_ABORTED) ──
-    if navigation_error and "ERR_ABORTED" in navigation_error and not last_dd:
-        try:
-            html = await _fetch_html_via_http(url, timeout_ms)
-            # Inyectar <base> para que URLs relativas resuelvan contra la URL real
-            base_tag = f'<base href="{url}">'
-            if "<head>" in html:
-                html = html.replace("<head>", f"<head>{base_tag}", 1)
-            else:
-                html = f"<head>{base_tag}</head>{html}"
-
-            await page.goto("about:blank", timeout=timeout_ms)
-            await page.setContent(html, wait_until="domcontentloaded", timeout=timeout_ms)
-            await page.wait_for_timeout(wait_after * 1000)
-
-            last_dd = await extract_digital_data(page)
-            last_title = await extract_title(page)
-            if last_dd:
-                navigation_error = ""
-                logging.info("Recuperado via fetch+setContent: %s", url[:80])
-            else:
-                logging.debug("fetch+setContent no produjo digitalData: %s", url[:80])
-                if logging.getLogger().isEnabledFor(logging.DEBUG):
-                    await debug_dump_available_globals(page)
-        except Exception as e2:
-            logging.debug("fetch+setContent falló: %s", e2)
-
-    elapsed = time.perf_counter() - start
-    result = {
-        "url": url, "row": row,
-        "page_name": _page_name_from_url(url),
-        "digitaldata": last_dd,
-        "digitaldata_auto": last_dd,
-        "digitaldata_manual": None,
-        "raw_beacons": [],
-        "aa_parsed": None,
-        "extra_beacons": [],
-        "metadata": {
-            "title": last_title,
-            "s_object": last_s,
-            "elapsed_s": round(elapsed, 1),
-            "beacon_count": 0,
-        },
-        "elapsed_s": round(elapsed, 1),
-        "status": 0,
-        "aa_source": None,
-        "title": last_title,
-        "code": None,
-        "retries_used": attempt,
-    }
-    if navigation_error:
-        result["error"] = navigation_error
-    return result
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# HELPERS
-# ═══════════════════════════════════════════════════════════════════════════
-
-def _page_name_from_url(url: str) -> str:
-    """Deriva un nombre legible desde la URL."""
-    try:
-        parts = url.rstrip("/").split("/")
-        for i, p in enumerate(parts):
-            if "ford" in p and i + 2 < len(parts):
-                return parts[-1].replace(".html", "").replace("-", " ").title()
-        return parts[-1].replace(".html", "").replace("-", " ").title()
-    except Exception:
-        return url[:60]
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # MAIN (async)
@@ -411,7 +177,6 @@ async def amain() -> None:
                 # Contexto propio por página para evitar "Target closed" en cascada.
                 ctx = await browser.new_context(**context_kwargs)
                 ctx.set_default_timeout(args.timeout * 1000 if args.timeout else 60000)
-                await ctx.route("**/*", lambda route, req: route_beacons(route, req))
                 if browser_type == "firefox":
                     await ctx.add_init_script("""
                         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -505,8 +270,12 @@ async def amain() -> None:
 
         wb.close()
         logging.info("Guardado: %s", out)
-        _print_metrics(metrics, args, output_path)
 
+        # Limpieza AA en Excel (post-procesamiento)
+        _run_aa_cleanup(output_path)
+
+        score = _display_metrics(metrics, args)
+        print(f"  SCORE GLOBAL:      {score}/100\n{'-' * 55}")
         await browser.close()
 
 
@@ -628,12 +397,10 @@ def _resolve_output(url_source: str, market: str | None = None) -> str:
     return "historial.xlsx"
 
 
-# _run_pipeline y _route_beacons movidos a json_convert/pipeline.py
-# Se importan desde json_convert.pipeline
 
 
-def _print_metrics(metrics: dict, args: argparse.Namespace, output_path: str) -> int:
-    """Muestra metricas finales en consola."""
+def _display_metrics(metrics: dict, args: argparse.Namespace) -> int:
+    """Muestra metricas finales en consola. Puro print — sin side-effects."""
     success_rate = (metrics["ok_aa"] / max(metrics["total"], 1)) * 100
     dd_rate = (metrics["ok_dd"] / max(metrics["total"], 1)) * 100
     avg_time = sum(metrics["times"]) / max(len(metrics["times"]), 1)
@@ -656,8 +423,6 @@ def _print_metrics(metrics: dict, args: argparse.Namespace, output_path: str) ->
   Tiempo total:      {timedelta(seconds=int(total_time))}
   Promedio/URL:      {avg_time:.1f}s
   Guardados incr.:   cada {SAVE_EVERY_N} URLs
-{"-" * 55}
-  SCORE GLOBAL:      {score}/100
 {"-" * 55}""")
 
     if metrics.get("errores_detalle"):
@@ -676,16 +441,17 @@ def _print_metrics(metrics: dict, args: argparse.Namespace, output_path: str) ->
         if avg_time > 30:
             print("    * Paginas lentas. Aumentar --timeout o verificar SPAs")
 
-    if os.path.exists(output_path):
-        print(f"\n{'=' * 55}")
-        print("  Limpiando AA en Excel...")
-        print(f"{'=' * 55}")
-        clean_script = os.path.join(os.path.dirname(__file__) or ".", "extract_aa.py")
-        cmd = [sys.executable, clean_script, "--input", output_path]
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        print(r.stdout)
-
     return score
+
+
+def _run_aa_cleanup(output_path: str) -> None:
+    """Ejecuta extract_aa.py post-procesamiento sobre el Excel generado."""
+    if not os.path.exists(output_path):
+        return
+    clean_script = os.path.join(os.path.dirname(__file__) or ".", "extract_aa.py")
+    cmd = [sys.executable, clean_script, "--input", output_path]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    print(r.stdout)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

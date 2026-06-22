@@ -37,21 +37,17 @@ if sys.stdout.encoding and sys.stdout.encoding.upper() not in ("UTF-8", "CP65001
 
 try:
     import openpyxl
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.styles import PatternFill
 except ImportError:
     print("[ERROR] openpyxl no está instalado. Ejecutá: pip install openpyxl")
     sys.exit(1)
 
-# ── Estilos ──
-HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
+from json_convert.styles import FILL_HEADER, FONT_HEADER, THIN_BORDER
+
+# ── Estilos locales (gama distinta a la compartida) ──
 FAIL_FILL = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
 OK_FILL = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
 WARN_FILL = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
-THIN_BORDER = Border(
-    left=Side(style="thin"), right=Side(style="thin"),
-    top=Side(style="thin"), bottom=Side(style="thin"),
-)
 
 # Columnas del reporte de salida
 OUTPUT_HEADERS = [
@@ -416,8 +412,8 @@ def _write_data_sheet(wb: openpyxl.Workbook, title: str, data: list[dict],
     for c, h in enumerate(OUTPUT_HEADERS, start=1):
         cell = ws.cell(1, c)
         cell.value = h
-        cell.fill = HEADER_FILL
-        cell.font = HEADER_FONT
+        cell.fill = FILL_HEADER
+        cell.font = FONT_HEADER
         cell.alignment = Alignment(horizontal="center", vertical="center")
         cell.border = THIN_BORDER
 

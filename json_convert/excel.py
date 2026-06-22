@@ -12,16 +12,16 @@ import json
 import logging
 import os
 import time as _time
-from typing import Any
 from copy import copy
 from datetime import datetime
+from typing import Any
 
 import openpyxl
 from openpyxl.styles import Alignment, PatternFill
 
 # ── Constantes ──
 INPUT_FILE = "RevisionManual.xlsx"
-SAVE_EVERY_N = 5
+SAVE_EVERY_N = 20
 
 SHEET_HEADERS = [
     "nombre pagina auditada",
@@ -74,6 +74,7 @@ def _safe_serialize(obj: object, depth: int = 0) -> object:
             try:
                 out[str(k)] = _safe_serialize(v, depth + 1)
             except Exception:
+                logging.debug("_safe_serialize fallback for key %s", str(k)[:60])
                 out[str(k)] = str(v)[:200]
         return out
     if isinstance(obj, (list, tuple)):
