@@ -27,6 +27,7 @@ from json_convert.metrics import (
     _error_code_from_detail,
     compute_url_score,
 )
+from json_convert.types import PipelineMetrics
 
 # ═══════════════════════════════════════════════════════════════════════════
 # WRITE RESULT — escribe una URL en Excel con métricas + auto-save
@@ -36,7 +37,7 @@ from json_convert.metrics import (
 async def write_result(
     ws: Any,
     result: dict,
-    metrics: dict,
+    metrics: PipelineMetrics,
     excel_lock: asyncio.Lock,
     output_path: str,
     saved_count: list,  # [int] mutable para closure
@@ -140,7 +141,7 @@ async def run_pipeline(
     ws: Any,
     output_path: str,
     show_progress: bool = False,
-) -> tuple[list[dict], list[dict], dict]:
+) -> tuple[list[dict], list[dict], PipelineMetrics]:
     """
     Ejecuta pipeline de URLs concurrentes con semáforo, escribe Excel.
 
@@ -160,11 +161,11 @@ async def run_pipeline(
     saved_count = [0]
     results: list[dict] = []
     errors_detail: list[dict] = []
-    metrics: dict = {
+    metrics: PipelineMetrics = {
         "total": len(urls), "ok_aa": 0, "ok_dd": 0,
         "errors": 0, "retries": 0,
         "total_beacons": 0, "times": [],
-        "errores_detalle": [],
+        "errores_detalle": [], "total_time": 0.0,
     }
 
     pipeline_start = 0.0

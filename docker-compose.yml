@@ -1,0 +1,12 @@
+services:
+  json-convert:
+    build: .
+    image: json-convert:latest
+    container_name: json-convert
+    command: --help
+    volumes:
+      # Montar dir local para leer JSON de entrada y escribir XLSX
+      - ./output:/app/output
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright

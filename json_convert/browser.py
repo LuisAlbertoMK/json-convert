@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
+from typing import cast
 
 from playwright.async_api import Page, TimeoutError as PwTimeout
 
@@ -22,6 +24,7 @@ from json_convert import (
     try_dismiss_cookie_consent,
     validate_url,
 )
+from json_convert.types import UrlResult
 
 # ── Graceful shutdown ──
 _shutdown_flag = False
@@ -60,12 +63,19 @@ def _page_name_from_url(url: str) -> str:
         return url[:60]
 
 
+def _backoff_delay(attempt: int, base: float = 2.0, max_delay: float = 30.0) -> float:
+    """Retardo exponencial con jitter para retry."""
+    delay = min(base * (2 ** attempt), max_delay)
+    jitter = random.uniform(0, delay * 0.5)
+    return min(delay + jitter, max_delay)
+
+
 async def process_url(
     page: Page, row: int, url: str,
     wait_after: int = 4,
     timeout_ms: int = 35000,
     max_retry: int = 1,
-) -> dict:
+) -> UrlResult:
     """
     Navega a una URL, captura beacons + data layer.
     Devuelve dict con resultados.
@@ -100,10 +110,10 @@ async def process_url(
                 popup_page = p
             page.on("popup", _on_popup)
 
-            await page.goto(url, wait_until=_wait, timeout=timeout_ms)
+            await page.goto(url, wait_until=_wait, timeout=timeout_ms)  # type: ignore[arg-type]
 
             if popup_page:
-                await popup_page.close()
+                await cast(Page, popup_page).close()
                 logging.debug("Popup cerrado: %s", url)
             page.remove_listener("popup", _on_popup)
 
@@ -140,9 +150,9 @@ async def process_url(
             navigation_error = "Timeout al navegar"
             logging.info("Timeout en intento %d: %s", attempt + 1, sanitize_url_for_log(url)[:60])
             if attempt < max_retry:
-                # ⚠ page puede estar cerrada si el browser perdió conexión
+                delay = _backoff_delay(attempt)
                 try:
-                    await page.wait_for_timeout(2000)
+                    await page.wait_for_timeout(int(delay * 1000))
                 except Exception:
                     logging.debug("Browser page closed during retry wait (PwTimeout): %s", url[:60])
                     break
@@ -170,9 +180,9 @@ async def process_url(
                     logging.debug("ERR_ABORTED recovery extraction failed: %s", url[:60])
 
             if attempt < max_retry:
-                # ⚠ page puede estar cerrada si el browser perdió conexión
+                delay = _backoff_delay(attempt)
                 try:
-                    await page.wait_for_timeout(2000)
+                    await page.wait_for_timeout(int(delay * 1000))
                 except Exception:
                     logging.debug("Browser page closed during retry wait (nav error): %s", url[:60])
                     break
@@ -189,7 +199,7 @@ async def process_url(
                 html = f"<head>{base_tag}</head>{html}"
 
             await page.goto("about:blank", timeout=timeout_ms)
-            await page.setContent(html, wait_until="domcontentloaded", timeout=timeout_ms)
+            await page.setContent(html, wait_until="domcontentloaded", timeout=timeout_ms)  # type: ignore[attr-defined]
             await page.wait_for_timeout(wait_after * 1000)
 
             last_dd = await extract_digital_data(page)
@@ -205,7 +215,7 @@ async def process_url(
             logging.debug("fetch+setContent falló: %s", e2)
 
     elapsed = time.perf_counter() - start
-    result = {
+    result: UrlResult = {
         "url": url, "row": row,
         "page_name": _page_name_from_url(url),
         "digitaldata": last_dd,

@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
+
+from json_convert.types import BeaconResult
 from urllib.parse import parse_qs, urlparse
 
 
@@ -37,7 +39,7 @@ DATA_LAYER_NAMES = [
 ]
 
 
-def parse_aa_beacon(beacon_url: str, page_title: str = "") -> dict:
+def parse_aa_beacon(beacon_url: str, page_title: str = "") -> BeaconResult:
     """Parsea URL de beacon de Adobe Analytics a JSON estructurado."""
     parsed = urlparse(beacon_url)
     qs = parse_qs(parsed.query)
@@ -109,14 +111,14 @@ def parse_aa_beacon(beacon_url: str, page_title: str = "") -> dict:
 
     ts = first("t") or first("ts")
     if ts:
-        result["request"]["collectedTimestamp"] = ts
+        result["request"]["collectedTimestamp"] = ts  # type: ignore[index]
     products_raw = first("products")
     if products_raw:
         result["products"] = products_raw
-    return result
+    return cast(BeaconResult, result)
 
 
-def build_aa_from_s(s_obj: dict, page_title: str = "") -> dict:
+def build_aa_from_s(s_obj: dict, page_title: str = "") -> BeaconResult:
     """Convierte window.s a JSON estructurado."""
     props, evars = {}, {}
     for key, val in s_obj.items():
