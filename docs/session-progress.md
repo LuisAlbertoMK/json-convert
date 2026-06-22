@@ -13,15 +13,17 @@
 
 | Area | Descripción | Prioridad |
 |------|-------------|-----------|
-| **Tests browser.py** | Cobertura actual ~40-50%. Faltan tests para `_backoff_delay`, `process_url` edge cases (shutdown, ERR_ABORTED, popup) | Media |
-| **Anotaciones restantes** | `metrics.py`, `extract_browser.py`, `audit_report.py` sin TypedDict aún | Baja |
+| **Evaluar Firefox como default** | Firefox no sufre ERR_ABORTED (doc en `docs/fallback-err-aborted.md`). Pendiente evaluar performance/estabilidad vs Chromium | Media |
+| **Decisiones de negocio** | 4 puntos de `resumen-errores.md`: URLs legal/privacy sin AA, ford.mx, score por mercado, línea de aceptación | Media |
+| **Anotaciones restantes** | `metrics.py`, `extract_browser.py`, `audit_report.py` sin TypedDict | Baja |
 | **CI/CD Docker** | Publicar imagen en GHCR, integrar en workflow | Baja |
-| **Mypy full repo** | Hoy solo 4 módulos. Correr `mypy src/` cuando estén todos anotados | Baja |
-| **Documentación API** | README desactualizado, `--help` cubre lo básico | Baja |
+| **Mypy full repo** | Solo 4 módulos. Correr `mypy src/` cuando estén todos | Baja |
+| **README desactualizado** | vs estructura actual (src/, scripts/, json_convert/) | Baja |
 
 ## Métricas
 
-- **Tests**: 222 ✓ (ningún skip, ningún warning)
+- **Tests**: **251 ✓** (+29 browser.py)
+- **Cobertura browser.py**: `_page_name_from_url` 100%, `_backoff_delay` 100%, `process_url` ~65% (shutdown, invalid, success, popup, smart_wait, timeout, ERR_ABORTED, cancelled, generic_error, fetch_fallback, page_closed)
 - **Mypy**: 0 errors en 4 módulos anotados
-- **Cobertura diferencias**: +52pp excel.py, +35pp aa_parser.py, +100pp utils.py
 - **LOC**: −~420 neto (extracción de módulos + eliminación de dead code)
+- **Velocidad**: `--wait-after` default 4→2 (ahorro ~1-2s/URL)

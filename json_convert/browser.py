@@ -72,7 +72,7 @@ def _backoff_delay(attempt: int, base: float = 2.0, max_delay: float = 30.0) -> 
 
 async def process_url(
     page: Page, row: int, url: str,
-    wait_after: int = 4,
+    wait_after: int = 2,
     timeout_ms: int = 35000,
     max_retry: int = 1,
 ) -> UrlResult:

@@ -274,40 +274,30 @@ PR/
 
 ---
 
-## 11. Análisis de velocidad de recolección
+## 11. Análisis de velocidad de recolección — ✅ IMPLEMENTADO
 
 **Solicitud**: Evaluar si se puede acelerar la auditoría de URLs.
 
-**Configuración actual** (`audit.json`):
-```json
-{
-  "workers": 3,
-  "retry": 2,
-  "timeout": 35000,
-  "wait_after": 4,
-  "headed": false
-}
-```
+**Análisis original**: 3 cuellos de botella identificados en `extract_browser.py`:
 
-**Análisis**: Se identificaron 3 cuellos de botella principales en `extract_browser.py`:
+| # | Problema | Solución aplicada | Dónde |
+|---|----------|-------------------|-------|
+| 1 | `wait_until="load"` | Estrategia progresiva: `["domcontentloaded", "commit", "load"]` | `browser.py:process_url()` |
+| 2 | `asyncio.sleep(4)` fijo | Smart wait: `wait_for_function("window.digitalData !== undefined")` con fallback 1s | `browser.py:process_url()` |
+| 3 | Extracciones secuenciales | `asyncio.gather(title, digitaldata, s_object)` paralelizado | `browser.py:process_url()` |
 
-| # | Problema | Código | Impacto |
-|---|----------|--------|---------|
-| 1 | `wait_until="load"` | `page.goto(url, wait_until="load")` | Espera imágenes, fuentes, ads — nosotros solo necesitamos DOM + JS |
-| 2 | `asyncio.sleep(4)` fijo | `await asyncio.sleep(wait_after)` | 4 segundos por URL sin importar si la página ya cargó |
-| 3 | Extracciones secuenciales | 4 `await` seguidos (cookie, title, dd, s) | title, digitaldata, s_object corren en serie, podrían paralelizarse |
+**Ajustes adicionales (2026-06-22)**:
+- `--wait-after` default reducido de **4 → 2** (el smart wait timeout real era `min(4000, 3000)=3000ms`, ahora `min(2000, 2000)=2000ms`)
+- Ahorro estimado: ~1-2s por URL en páginas sin digitalData (314 URLs → ~5-10 min menos)
 
-**Estimación de ganancia**:
+**Estado actual del pipeline**:
+- Workers: 3 (default, configurable vía `--workers`)
+- `wait_until`: `domcontentloaded` en primer intento
+- Smart wait: hasta 2s por `digitalData`, +1s fallback
+- Extracciones: paralelizadas con `asyncio.gather`
+- Caché de navegación: persiste 24h (evita re-navegar URLs ya auditadas)
 
-```json
-{
-  "escenario_actual":  { "workers": 3, "wait_until": "load",  "wait_after_s": 4, "tiempo_estimado_14_urls": "50-70s" },
-  "escenario_medio":   { "workers": 3, "wait_until": "domcontentloaded", "wait_after_s": 1, "tiempo_estimado_14_urls": "15-25s" },
-  "escenario_optimo":  { "workers": 5, "wait_until": "domcontentloaded", "wait_after_s": 0.5, "gather": true, "tiempo_estimado_14_urls": "8-14s" }
-}
-```
-
-**No implementado** — pendiente de decisión.
+**Próximo paso opcional**: Evaluar Firefox como default browser (Gecko no sufre ERR_ABORTED, documentado en `docs/fallback-err-aborted.md`).
 
 ---
 
@@ -318,9 +308,12 @@ PR/
 | `run.ps1` | Script análisis + limpieza one-click, fix PS 5.1 `-Include` bug |
 | `run.bat` | Wrapper doble clic |
 | `menu.py` | Menú TUI, pipeline completo, `--split-aa`, `--market` por mercado, fix `detect_markets()` |
-| `extract_browser.py` | Fix `UnboundLocalError` (import redundante) |
+| `extract_browser.py` | Fix `UnboundLocalError` (import redundante). `--wait-after` default 4→2 |
 | `audit_report.py` | Fix 3 f-strings partidos |
 | `_gen_urls.py` | Auto-detect mercado desde URL + auto-generar nombre desde filename |
 | `urls.json` | Regenerado: markets detectados, nombres auto-generados, URLs truncadas corregidas |
 | `RevisionManual.xlsx` | URLs truncadas corregidas, trailing spaces limpiados |
 | `test_gen_urls.py` | Test actualizado para nuevo comportamiento de auto-nombre |
+| `json_convert/browser.py` | Smart wait (digitalData), progressive `wait_until`, `asyncio.gather`, `wait_after` default 4→2, `_backoff_delay` con jitter |
+| `src/extract_browser.py` | `--wait-after` default 4→2, `--browser` flag (chromium/firefox), `UrlCache` integrado |
+| `docs/fallback-err-aborted.md` | Documentación de estrategia ERR_ABORTED + Firefox testing |

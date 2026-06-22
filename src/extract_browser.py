@@ -205,7 +205,7 @@ async def amain() -> None:
                     page.on("response", _capture)
                     result = await process_url(
                         page, row, url,
-                        wait_after=args.wait_after or 4,
+                        wait_after=args.wait_after or 2,
                         timeout_ms=(args.timeout or 35) * 1000,
                         max_retry=args.max_retry or 1,
                     )
@@ -290,7 +290,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--row", type=int, help="Fila inicial en Excel clasico")
     p.add_argument("--workers", type=int, default=3, help="Concurrencia")
     p.add_argument("--timeout", type=int, default=35, help="Timeout por URL (s)")
-    p.add_argument("--wait-after", type=int, default=4, help="Espera post-carga (s)")
+    p.add_argument("--wait-after", type=int, default=2, help="Espera post-carga (s) — smart wait dinámico")
     p.add_argument("--max-retry", type=int, default=1, help="Reintentos por URL")
     p.add_argument("--headless", action="store_true", help="Forzar headless")
     p.add_argument("--headed", action="store_true", help="Forzar headed (con UI)")
