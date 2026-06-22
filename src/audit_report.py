@@ -42,7 +42,7 @@ if sys.stdout.encoding and sys.stdout.encoding.upper() not in ("UTF-8", "CP65001
 
 try:
     import openpyxl
-    from openpyxl.styles import PatternFill
+    from openpyxl.styles import Alignment, Font, PatternFill
 except ImportError:
     print("[ERROR] openpyxl no está instalado. Ejecutá: pip install openpyxl")
     sys.exit(1)
@@ -65,9 +65,16 @@ ERROR_STATES = {"NO_AA_DATA", "TIMEOUT", "HTTP_403", "HTTP_ERROR",
                 "URL_INVALID", "NETWORK_ERROR", "NAV_ERROR", "UNKNOWN"}
 
 
+_EXCLUDED_DIRS = frozenset({
+    "src", "scripts", "docs", "tests", "logs", "config",
+    "json_convert", ".pytest_cache", "__pycache__", "node_modules",
+})
+
+
 def find_historial_files(base_dir: str, specific_dirs: list[str] | None = None) -> list[tuple[str, str]]:
     """Busca archivos historial.xlsx en directorios de mercado.
 
+    Busca tanto en {market}/ como en {market}/{entorno}/.
     Returns:
         Lista de (ruta_completa, nombre_mercado)
     """
@@ -77,18 +84,34 @@ def find_historial_files(base_dir: str, specific_dirs: list[str] | None = None) 
     if specific_dirs:
         dirs = [base / d for d in specific_dirs]
     else:
-        # Auto-detectar directorios con historial.xlsx
-        dirs = [d for d in base.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        dirs = [d for d in base.iterdir()
+                if d.is_dir()
+                and not d.name.startswith(".")
+                and d.name.lower() not in _EXCLUDED_DIRS]
+
+    seen: set[str] = set()
+
+    def _add(path: Path, label: str) -> None:
+        sp = str(path)
+        if sp not in seen:
+            seen.add(sp)
+            results.append((sp, label.upper()))
 
     for d in dirs:
-        candidates = [
-            d / "historial.xlsx",
-            d / "con_aa.xlsx",
-            d / "sin_aa.xlsx",
-        ]
-        for hpath in candidates:
-            if hpath.exists():
-                results.append((str(hpath), d.name.upper()))
+        # Legacy: {market}/historial.xlsx
+        for candidate in ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]:
+            fp = d / candidate
+            if fp.exists():
+                _add(fp, d.name)
+
+        # New: {market}/{entorno}/historial.xlsx
+        for ent in d.iterdir():
+            if not ent.is_dir() or ent.name.startswith("."):
+                continue
+            for candidate in ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]:
+                fp = ent / candidate
+                if fp.exists():
+                    _add(fp, d.name)
                 break  # Solo el primero por directorio
 
     # También buscar en la raíz
@@ -510,7 +533,7 @@ Ejemplos:
     parser.add_argument("--verbose", action="store_true", help="Logging detallado")
 
     args = parser.parse_args()
-    base = os.path.dirname(os.path.abspath(__file__))
+    base = str(Path(__file__).resolve().parent.parent)  # project root
 
     # Recolectar fuentes de datos
     sources = []

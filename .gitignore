@@ -40,6 +40,9 @@ scripts/_check_cols.py
 *_browser*.bak
 *.bak
 
+# Debug scripts (no committed)
+_test*.py
+
 # Resúmenes auto-generados (se regeneran desde los .xlsx)
 **/resumen-catalogo-migracion.*
 **/match-prod-vs-preview.*

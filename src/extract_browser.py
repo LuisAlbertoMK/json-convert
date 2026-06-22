@@ -89,7 +89,7 @@ async def amain() -> None:
 
     # ── Fuente de URLs ──
     urls, url_source = _resolve_urls(args)
-    output_path = args.output or _resolve_output(url_source, args.market)
+    output_path = args.output or _resolve_output(url_source, args.market, args.entorno)
 
     # Mostrar conteo antes de empezar
     market_label = args.market.upper() if args.market else "TODOS"
@@ -114,7 +114,15 @@ async def amain() -> None:
 
         if browser_type == "firefox":
             print(f"  Usando Firefox ({browser_type})")
-            browser = await pw.firefox.launch(**launch_kwargs)
+            browser = await pw.firefox.launch(
+                firefox_user_prefs={
+                    # Desactivar tracking protection para capturar beacons AA
+                    "privacy.trackingprotection.enabled": False,
+                    "privacy.trackingprotection.pbmode.enabled": False,
+                    "privacy.trackingprotection.emailtracking.enabled": False,
+                },
+                **launch_kwargs,
+            )
         else:
             launch_kwargs["args"] = ["--disable-blink-features=AutomationControlled"]
             try:
@@ -393,12 +401,16 @@ def _resolve_urls(args: argparse.Namespace) -> tuple[list[tuple[int, str]], str]
     return urls, source
 
 
-def _resolve_output(url_source: str, market: str | None = None) -> str:
-    """Determina nombre de output segun fuente."""
+def _resolve_output(url_source: str, market: str | None = None,
+                    entorno: str | None = None) -> str:
+    """Determina nombre de output segun fuente y entorno."""
     if url_source == "clasico":
         return "resultado.xlsx"
     if market:
-        return os.path.join(market.upper(), "historial.xlsx")
+        market_dir = market.upper()
+        if entorno and entorno not in ("ambas", None):
+            return os.path.join(market_dir, entorno, "historial.xlsx")
+        return os.path.join(market_dir, "historial.xlsx")
     return "historial.xlsx"
 
 

@@ -235,24 +235,48 @@ def _choose_entorno(non_interactive: bool = False) -> str:
 def detect_markets() -> list[tuple[str, str]]:
     """Detecta directorios de mercado con archivos de auditoria.
 
-    Busca en subdirectorios (PR/, MX/, etc.) y tambien en la raiz del proyecto.
+    Busca en subdirectorios (PR/, MX/, etc.), subdirectorios de entorno
+    ({market}/{entorno}/) y tambien en la raiz del proyecto.
+    Excluye directorios de codigo/documentacion.
     """
+    _EXCLUDED_DIRS = frozenset({
+        "src", "scripts", "docs", "tests", "logs", "config",
+        "json_convert", ".pytest_cache", "__pycache__", "node_modules",
+    })
     results: list[tuple[str, str]] = []
     base = Path(BASE_DIR)
 
-    # Buscar en subdirectorios de mercado
+    seen: set[str] = set()
+
+    def _add(path: Path, label: str) -> None:
+        sp = str(path)
+        if sp not in seen:
+            seen.add(sp)
+            results.append((label.upper(), sp))
+
+    # Buscar en subdirectorios de mercado (legacy: PR/historial.xlsx)
     for d in base.iterdir():
-        if not d.is_dir() or d.name.startswith("."):
+        dname = d.name
+        if not d.is_dir() or dname.startswith(".") or dname.lower() in _EXCLUDED_DIRS:
             continue
         for candidate in ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]:
-            if (d / candidate).exists():
-                results.append((d.name.upper(), str(d / candidate)))
-                break
+            fp = d / candidate
+            if fp.exists():
+                _add(fp, dname.upper())
+
+        # Buscar en subdirectorios de entorno (PR/preview/, PR/produccion/)
+        for ent in d.iterdir():
+            if not ent.is_dir() or ent.name.startswith("."):
+                continue
+            for candidate in ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]:
+                fp = ent / candidate
+                if fp.exists():
+                    _add(fp, dname.upper())
 
     # Buscar tambien en la raiz del proyecto
     for candidate in ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]:
         fp = base / candidate
-        if fp.exists() and not any(r[1] == str(fp) for r in results):
+        if fp.exists() and str(fp) not in seen:
             results.append(("RAIZ", str(fp)))
 
     return results
@@ -437,6 +461,10 @@ def op_reporte(non_interactive: bool = False) -> None:
         markets = detect_markets()
         for m, _ in markets:
             if m != "RAIZ":
+                for ent in ("produccion", "preview"):
+                    ep = os.path.join(BASE_DIR, m, ent, "historial.xlsx")
+                    if os.path.exists(ep):
+                        print(_c("green", f"       {m}/{ent}/historial.xlsx"))
                 print(_c("green", f"       {m}/reporte-auditoria.xlsx"))
         if confirm("  Abrir el global?"):
             open_file("reporte_auditoria.xlsx")
@@ -645,10 +673,13 @@ def op_ver_resultados() -> None:
     header("RESULTADOS")
 
     targets = []
-    report = os.path.join(BASE_DIR, "reporte_auditoria.xlsx")
-    if os.path.exists(report):
-        targets.append(report)
 
+    # Global report in root (generated on next run) or in market/entorno
+    global_report = os.path.join(BASE_DIR, "reporte_auditoria.xlsx")
+    if os.path.exists(global_report):
+        targets.append(global_report)
+
+    # Per-market files: historiales + reports
     for _m, hpath in detect_markets():
         base = os.path.dirname(hpath)
         for fname in ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]:
@@ -656,7 +687,8 @@ def op_ver_resultados() -> None:
             if os.path.exists(fp) and fp not in targets:
                 targets.append(fp)
 
-    for fname in ["historial.xlsx"]:
+    # Legacy root historiales
+    for fname in ["historial.xlsx", "reporte_auditoria.xlsx"]:
         fp = os.path.join(BASE_DIR, fname)
         if os.path.exists(fp) and fp not in targets:
             targets.append(fp)
@@ -676,8 +708,24 @@ def op_ver_resultados() -> None:
     open_file(targets[idx - 1])
 
 
+def _run_audit_for_env(markets: list[str], env: str, results: list) -> bool:
+    """Corre extract_browser para un entorno particular. Retorna True si todo OK."""
+    ok = True
+    for m in markets:
+        n = _count_urls(m, env)
+        rc = run_step(
+            [sys.executable, "src/extract_browser.py", "--urls", "data/urls.json",
+             "--market", m, "--entorno", env, "--split-aa", "--progress"]
+            + _browser_args(),
+            f"Auditando {m} ({n} URLs [{env}])...", timeout=600)
+        results.append((f"Auditoria {m} ({env})", rc))
+        if rc != 0:
+            ok = False
+    return ok
+
+
 def op_todo_en_uno(target_market=None, non_interactive=False):
-    """Opcion 1: Pipeline completo.
+    """Opcion 1: Pipeline completo — multi-entorno con match 3‑vías.
 
     Args:
         target_market: None → preguntar (interactivo) o ALL (--run)
@@ -692,7 +740,7 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
     print("  Inicio: " + datetime.now().strftime("%H:%M:%S"))
     print()
 
-    # Elegir mercado si no se especificó
+    # Elegir mercado
     if target_market is None:
         market_choice, _ = choose_market(source="urls")
         if market_choice is None:
@@ -708,16 +756,17 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
 
     # Elegir entorno
     entorno = _choose_entorno(non_interactive)
+    entornos_to_run = ["preview", "produccion"] if entorno == "ambas" else [entorno]
 
     market_label = "todos los mercados" if target_market == ALL_MARKETS else target_market
-    print(_c("dim", f"  Mercado(s): {market_label}  |  Entorno: {entorno}"))
+    print(_c("dim", f"  Mercado(s): {market_label}  |  Entorno(s): {', '.join(entornos_to_run)}"))
     print()
 
     results = []
 
-    # Paso 1: Correr tests
+    # Paso 1: Tests
     print()
-    print(_c("cyan", "  [1/7] Ejecutando tests..."))
+    print(_c("cyan", "  [1] Ejecutando tests..."))
     rc = run_step([sys.executable, "-m", "pytest", "--tb=short", "-q"],
                   "pytest --tb=short -q", timeout=120)
     if rc != 0:
@@ -725,7 +774,6 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
         if not confirm("    Continuar pipeline igual?", default=False):
             print(_c("red", "    Pipeline abortado por fallo en tests."))
             results.append(("Tests", rc))
-            # Saltar al resumen
             print()
             _pipeline_summary(results)
             return
@@ -733,7 +781,7 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
 
     # Paso 2: Verificar urls.json
     print()
-    print(_c("cyan", "  [2/7] Verificando entorno..."))
+    print(_c("cyan", "  [2] Verificando entorno..."))
     urls_path = os.path.join(BASE_DIR, "data/urls.json")
     has_urls = os.path.exists(urls_path)
     if not has_urls:
@@ -752,120 +800,96 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
         print(_c("green", "    urls.json OK"))
         results.append(("Verificar entorno", 0))
 
-    # Paso 3: Auditoria (por mercado)
-    # ── ¿Saltar si ya hay historiales de corridas anteriores? ──
-    print()
-    print(_c("cyan", "  [3/7] Auditoria (extract_browser)..."))
-    existing_historiales = detect_markets()
-    skip_audit = False
-    if existing_historiales and has_urls:
-        skip_audit = True
-        print(_c("dim", f"    Ya existen historiales: {', '.join(m for m,_ in existing_historiales)}"))
-        if confirm("    Usar historiales existentes (saltar auditoria)?", default=True):
-            print(_c("green", "    Saltando auditoria — usando datos existentes."))
-            results.append(("Auditoria (saltada)", 0))
-            audit_ok = True
-        else:
-            skip_audit = False
+    # Pasos 3‑N: Auditoria + Post-proceso por cada entorno
+    any_audit_ok = True
+    post_markets = []
 
-    if not skip_audit:
-        if has_urls:
-            audit_ok = True
-            for m in markets_to_run:
-                n = _count_urls(m, entorno)
-                rc = run_step(
-                    [sys.executable, "src/extract_browser.py", "--urls", "data/urls.json",
-                     "--market", m, "--entorno", entorno, "--split-aa", "--progress"]
-                    + _browser_args(),
-                    f"Auditando {m} ({n} URLs [{entorno}])...", timeout=600)
-                results.append(("Auditoria " + m, rc))
-                if rc != 0:
-                    audit_ok = False
-        else:
-            rc = run_step([sys.executable, "src/extract_browser.py"] + _browser_args(),
-                          "Ejecutando (modo Excel plano)...", timeout=600)
-            results.append(("Auditoria", rc))
-            audit_ok = (rc == 0)
+    for env_idx, env in enumerate(entornos_to_run):
+        step_n = 3 + env_idx * 2
 
-    # ── Si la auditoría falló, saltar pasos dependientes ──
-    if not audit_ok:
+        # Auditoría
         print()
-        print(_c("red", "  ⚠ Auditoría falló — revisá VPN/conexión a las URLs."))
-        print(_c("yellow", "    Saltando post-proceso, limpieza, reporte y catálogo."))
-        results.append(("Post-proceso", -2))
-        results.append(("Reporte de fallos", -2))
-        results.append(("Catálogo migración", -2))
-        # Ir directo a resultados
-        post_markets = []
-    else:
-        # Paso 4: Post-procesar
-        print()
-        print(_c("cyan", "  [4/7] Post-procesando (extract_aa)..."))
-        all_markets = detect_markets()
-        # Filtrar solo los markets objetivo
-        post_markets = [(m, p) for m, p in all_markets if m in markets_to_run or target_market == ALL_MARKETS]
-        processed_any = False
-        for m, hpath in post_markets:
-            _run_extract_aa(hpath)
-            results.append(("Post-proceso " + m, 0))
-            processed_any = True
-            _run_extract_aa_companions(hpath)
+        print(_c("cyan", f"  [{step_n}] Auditoría ({env})..."))
+        existing_historiales = detect_markets()
+        audit_ok = True
 
-        if not processed_any:
-            print(_c("yellow", "    No hay archivos de auditoria para post-procesar."))
-            results.append(("Post-proceso", -1))
-
-        # Paso 5: Reporte de fallos (global + por mercado)
-        print()
-        print(_c("cyan", f"  [5/7] Generando reporte de fallos ({entorno})..."))
-        rc = run_step(
-            [sys.executable, "src/audit_report.py", "--urls", "data/urls.json", "--entorno", entorno],
-            "src/audit_report.py", timeout=600)
-        results.append(("Reporte de fallos", rc))
-
-        # Paso 6: Catalogo de migracion
-        print()
-        print(_c("cyan", "  [6/7] Catalogo de migracion..."))
-        mapping_path = os.path.join(BASE_DIR, "data/url-mapping.json")
-        if not os.path.exists(mapping_path):
-            rp = os.path.join(BASE_DIR, "RevisionManual.xlsx")
-            if os.path.exists(rp):
-                print(_c("yellow", "    No se encuentra url-mapping.json"))
-                if confirm("    Generar template desde RevisionManual.xlsx?", default=True):
-                    rc = run_step(
-                        [sys.executable, "src/generate_migration_catalog.py",
-                         "--gen-template", "--input", rp, "--mapping", "data/url-mapping.json"],
-                        "Generando url-mapping.json...")
-                    if rc == 0:
-                        print(_c("yellow", "    [!] EDITAR url-mapping.json con production_url, aem_path y page_key"))
-                    results.append(("Template url-mapping", rc))
-                else:
-                    results.append(("Template url-mapping", -1))
+        if existing_historiales:
+            print(_c("dim", "    Ya existen historiales."))
+            if confirm("    Usar existentes (saltar auditoría)?", default=True):
+                results.append((f"Auditoria ({env}) saltada", 0))
             else:
-                print(_c("yellow", "    No hay RevisionManual.xlsx ni url-mapping.json - saltando catalogo"))
-                results.append(("Catalogo migracion", -1))
+                audit_ok = _run_audit_for_env(markets_to_run, env, results)
+        else:
+            if has_urls:
+                audit_ok = _run_audit_for_env(markets_to_run, env, results)
+            else:
+                rc = run_step([sys.executable, "src/extract_browser.py"] + _browser_args(),
+                              "Ejecutando (modo Excel plano)...", timeout=600)
+                results.append(("Auditoria", rc))
+                audit_ok = (rc == 0)
 
-        if os.path.exists(mapping_path) and os.path.exists(os.path.join(BASE_DIR, "data/expected.json")):
-            for m, hpath in post_markets:
-                rc = run_step(
-                    [sys.executable, "src/generate_migration_catalog.py",
-                     "--historial", hpath,
-                     "--mapping", "data/url-mapping.json",
-                     "--expected", "data/expected.json",
-                     "--market", m],
-                    "Catalogo " + m + "...", timeout=60)
-                results.append(("Catalogo " + m, rc))
+        if not audit_ok:
+            any_audit_ok = False
+            print(_c("red", f"  ⚠ Auditoría ({env}) falló."))
+            continue
 
-    # Paso 7: Resultados
-    print()
-    print(_c("cyan", "  [7/7] Resultados..."))
-    report_path = os.path.join(BASE_DIR, "reporte_auditoria.xlsx")
-    if os.path.exists(report_path):
-        if confirm("  Abrir el reporte?", default=True):
-            open_file(report_path)
-    elif post_markets:
+        # Post-procesar
+        print()
+        print(_c("cyan", f"  [{step_n + 1}] Post-procesando ({env})..."))
+        all_m = detect_markets()
+        for m, hpath in all_m:
+            if m in markets_to_run or target_market == ALL_MARKETS:
+                _run_extract_aa(hpath)
+                _run_extract_aa_companions(hpath)
+                post_markets.append((m, hpath))
+                results.append((f"Post-proceso {m} ({env})", 0))
+
+    # Reportes de fallos por entorno
+    for env in entornos_to_run:
+        print()
+        print(_c("cyan", f"  Reporte de fallos ({env})..."))
+        rc = run_step(
+            [sys.executable, "src/audit_report.py", "--urls", "data/urls.json",
+             "--entorno", env, "--output-dir", "."],
+            f"audit_report ({env})", timeout=600)
+        results.append((f"Reporte fallos ({env})", rc))
+
+    # Match 3‑vías si tenemos ambos entornos
+    if len(entornos_to_run) > 1:
+        print()
+        print(_c("cyan", "  Match 3‑vías (US Expected vs Preview vs Producción)..."))
+        for m in markets_to_run:
+            rc = run_step(
+                [sys.executable, "src/match_prod_preview.py",
+                 "--market", m, "--mode", "3way"],
+                f"Match 3‑vías {m}...", timeout=60)
+            results.append((f"Match 3‑vías {m}", rc))
+
+    # Catálogo de migración
+    mapping_path = os.path.join(BASE_DIR, "data/url-mapping.json")
+    if os.path.exists(mapping_path) and os.path.exists(os.path.join(BASE_DIR, "data/expected.json")):
+        print()
+        print(_c("cyan", "  Catálogo de migración..."))
         for m, hpath in post_markets:
-            if confirm("  Abrir " + m + "/historial.xlsx?", default=True):
+            rc = run_step(
+                [sys.executable, "src/generate_migration_catalog.py",
+                 "--historial", hpath,
+                 "--mapping", "data/url-mapping.json",
+                 "--expected", "data/expected.json",
+                 "--market", m],
+                f"Catálogo {m}...", timeout=60)
+            results.append((f"Catálogo {m}", rc))
+
+    # Resultados
+    print()
+    print(_c("cyan", "  Resultados..."))
+    match_html = os.path.join(BASE_DIR, "PR", "match", "match-3way.html")
+    if os.path.exists(match_html):
+        if confirm("  Abrir match 3‑vías?", default=True):
+            open_file(match_html)
+    elif post_markets:
+        for m, hpath in post_markets[:1]:
+            if confirm(f"  Abrir {os.path.dirname(hpath)}/historial.xlsx?", default=True):
                 open_file(hpath)
                 break
 

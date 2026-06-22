@@ -37,11 +37,12 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import openpyxl
-from openpyxl.styles import Border, PatternFill, Side
+from openpyxl.styles import Border, Font, PatternFill, Side
 
 from json_convert.styles import (
     ALIGN_CENTER,
     ALIGN_WRAP,
+    FILL_FAIL,
     FILL_HEADER,
     FILL_OK,
     FILL_WARN,
