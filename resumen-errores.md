@@ -69,7 +69,7 @@ Los fixes aplicados **deberian** mejorar el score, pero no se ha re-ejecutado pa
 
 | Fix | Impacto esperado |
 |-----|-----------------|
-| `wait_after: 4` (vs 2s) | Mas paginas alcanzan a emitir beacon AA |
+| `wait_after: 4 → 2` | Mas paginas alcanzan a emitir beacon AA |
 | Cookie consent siempre | Menos falsos NO_AA_DATA por banner bloqueando |
 | `--market PR` (excluye MX) | Score mas limpio por mercado |
 
@@ -77,11 +77,19 @@ Los fixes aplicados **deberian** mejorar el score, pero no se ha re-ejecutado pa
 
 ---
 
-## A debate
+## Decisiones tomadas (2026-06-22)
 
-Estos puntos requieren decision, no tienen fix tecnico:
+1. **6 URLs legal/privacy** → Se dejan como estan. Reportan "sin AA" pero no se ocultan. El target de PR (80) ya contempla que algunas URLs no tengan AA.
+2. **2 URLs ford.mx** → Agregar a `urls.json` con `"market": "MX"` para investigar. **Pendiente**: definir las URLs exactas.
+3. **Score por mercado** → Implementado. Cada `--market` muestra su propio score con target diferenciado:
+   - **PR**: target 80
+   - **MX**: target 90
+4. **Linea de aceptacion** → Targets por mercado. Score < target muestra alerta con sugerencias.
 
-1. **6 URLs legal/privacy sin AA en preview** - Es esperado? Debemos ignorarlas o desactivar la alerta?
-2. **2 URLs ford.mx** - No estan en `urls.json` actual. Usan GA4? Agregarlas con `"market": "MX"`?
-3. **Score general vs por mercado** - Medimos score global o por mercado? El score mezcla markets con comportamientos muy distintos.
-4. **Linea de aceptacion** - Que score consideramos "suficiente"? 70? 80? Definir target por mercado.
+### Targets por mercado
+
+| Mercado | Target | Notas |
+|---------|--------|-------|
+| PR | **80** | Incluye URLs legal/privacy sin AA (esperado) |
+| MX | **90** | Produccion, debe tener AA en casi todas |
+| Default | **80** | Para corridas sin --market |

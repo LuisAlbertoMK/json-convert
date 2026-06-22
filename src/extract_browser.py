@@ -275,7 +275,6 @@ async def amain() -> None:
         _run_aa_cleanup(output_path)
 
         score = _display_metrics(metrics, args)
-        print(f"  SCORE GLOBAL:      {score}/100\n{'-' * 55}")
         await browser.close()
 
 
@@ -399,6 +398,19 @@ def _resolve_output(url_source: str, market: str | None = None) -> str:
 
 
 
+_ACCEPTANCE_TARGETS: dict[str, int] = {
+    "PR": 80,
+    "MX": 90,
+}
+
+
+def _resolve_target(market: str | None) -> int:
+    """Retorna el target de aceptacion para el mercado dado."""
+    if market and market.upper() in _ACCEPTANCE_TARGETS:
+        return _ACCEPTANCE_TARGETS[market.upper()]
+    return 80
+
+
 def _display_metrics(metrics: dict, args: argparse.Namespace) -> int:
     """Muestra metricas finales en consola. Puro print — sin side-effects."""
     success_rate = (metrics["ok_aa"] / max(metrics["total"], 1)) * 100
@@ -407,10 +419,13 @@ def _display_metrics(metrics: dict, args: argparse.Namespace) -> int:
     beacons_per_url = metrics["total_beacons"] / max(metrics["total"], 1)
     total_time = metrics.get("total_time", 0)
     score = compute_score(metrics)
+    market_label = (args.market or "GLOBAL").upper()
+    target = _resolve_target(args.market)
+    passed = score >= target
 
     print(f"""
 {"=" * 55}
-  METRICAS Y SCORE
+  METRICAS Y SCORE — [{market_label}]
 {"=" * 55}
   Config:            {args.workers} worker(s) concurrente(s)
   URLs procesadas:   {metrics['ok_aa']}/{metrics['total']}
@@ -423,7 +438,19 @@ def _display_metrics(metrics: dict, args: argparse.Namespace) -> int:
   Tiempo total:      {timedelta(seconds=int(total_time))}
   Promedio/URL:      {avg_time:.1f}s
   Guardados incr.:   cada {SAVE_EVERY_N} URLs
+{"-" * 55}
+  SCORE [{market_label}]:  {score}/100
+  TARGET ACEPTACION:   {target}/100  {"✅ PASA" if passed else "❌ NO PASA"}
 {"-" * 55}""")
+
+    if not passed:
+        print(f"  ⚠  Score {score} no alcanza el target {target} para {market_label}.")
+        if success_rate < 80:
+            print("    * Baja tasa de captura AA — verificar conectividad / bloqueos")
+        if dd_rate < 70:
+            print("    * Baja tasa de digitalData — posible cambio en data layer")
+        if avg_time > 20:
+            print("    * Promedio alto por URL — considerar aumentar workers o reducir timeout")
 
     if metrics.get("errores_detalle"):
         print(f"  DETALLE ERRORES ({len(metrics['errores_detalle'])}):")
@@ -431,15 +458,6 @@ def _display_metrics(metrics: dict, args: argparse.Namespace) -> int:
         for cat, rows in categories.items():
             rows_str = ", ".join(str(r) for r in rows)
             print(f"    * {cat}: Fila(s) {rows_str}")
-
-    if score < 60:
-        print("  Sugerencias:")
-        if success_rate < 50:
-            print("    * Verificar VPN / acceso a las URLs")
-        if dd_rate < 50:
-            print("    * El data layer podria no llamarse window.digitaldata")
-        if avg_time > 30:
-            print("    * Paginas lentas. Aumentar --timeout o verificar SPAs")
 
     return score
 

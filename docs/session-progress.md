@@ -17,7 +17,7 @@
 | ✅ **README actualizado** | Paths, flags (`--browser`, `--wait-after` default 2s), estructura del proyecto | Hecho |
 | ✅ **TypedDict metrics.py** | `compute_score(PipelineMetrics)`, `compute_url_score(UrlResult)`, `classify_errors(list[ErrorDetail])` | Hecho |
 | ✅ **CI/CD Docker** | Workflow `docker-publish.yml` creado (GHCR). Requiere `GITHUB_TOKEN` con `packages: write` | Hecho |
-| **Decisiones de negocio** | 4 puntos: legal/privacy→dejar como AA, ford.mx→agregar a MX, score por mercado (pendiente análisis), línea aceptación 90 | Parcial |
+| ✅ **Decisiones de negocio** | legal/privacy→dejar como AA. Score por mercado: PR:80/MX:90. Targets implementados en `_display_metrics`. ford.mx→pendiente URLs exactas | Hecho (parcial MX) |
 | **Mypy full repo** | Solo 4 módulos. Correr `mypy src/` cuando estén todos | Baja |
 
 ## Métricas
