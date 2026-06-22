@@ -17,6 +17,12 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
+
+# Asegurar que la raíz del proyecto esté en sys.path para imports del paquete json_convert
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 import openpyxl
 from playwright.async_api import Page, async_playwright

@@ -1,4 +1,4 @@
-﻿"""
+"""
 audit_report.py — Reporte de URLs fallidas desde archivos de auditoría.
 
 Escanea archivos historial.xlsx en directorios de mercado (PR/, MX/, etc.),
@@ -27,6 +27,11 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+
+# Asegurar que la raíz del proyecto esté en sys.path para imports del paquete json_convert
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 # Force UTF-8 stdout for Windows cp1252 terminal
 if sys.stdout.encoding and sys.stdout.encoding.upper() not in ("UTF-8", "CP65001"):
