@@ -130,3 +130,60 @@ python -m pytest --tb=short -q
 - `json_convert/pipeline.py` — write_result column indices
 - `src/extract_aa.py` — AA auto/struct column fallbacks
 - `src/audit_report.py` — header detection fallbacks
+
+---
+
+## Session 3: Improvement fixes + editable install (2026-06-23 ~16:00)
+
+### What was done
+
+#### 1. Triangulación: 3 subagentes analizaron el codebase
+- **Subagente 1 (Arquitectura)**: 21 hallazgos — test de red sin mock, error handling inconsistente, código muerto
+- **Subagente 2 (DX)**: `sys.path.insert` boilerplate, duplicación de deps, `.env.example` con credenciales
+- **Subagente 3 (Data Integrity)**: Truncado silencioso, NaN propagation potencial, schema keys hardcodeadas
+
+#### 2. Hallazgos corregidos (5 de 15)
+| ID | Hallazgo | Arreglo | Archivos |
+|----|----------|---------|----------|
+| F1 | `config/requirements.txt` duplica `pyproject.toml` | Eliminado | `config/requirements.txt` |
+| F2 | `_safe_serialize` trunca a 200 chars sin avisar | Nueva `_log_truncation()` llamada en 4 puntos | `json_convert/excel.py` |
+| F3 | `.gitignore` incompleto | +`.ruff_cache/`, +`.mypy_cache/`, +`.coverage.*`, +`*.egg-info/`, +`dist/`, +`build/` | `.gitignore` |
+| F5 | Pipeline no logea resumen de fallos | +logging.warning con `x/y errores (n%)` | `json_convert/pipeline.py` |
+| F6 | Docstring `_auto_row_height` desactualizado | "cols 3-4-5-6-7" → "cols 3-4-5-6-7-8" | `json_convert/excel.py` |
+
+#### 3. Hallazgos falsos de subagentes (no existían)
+| Subagente dijo | Realidad |
+|----------------|----------|
+| `excel_formatter.py` trunca texto | No existe — la lógica está en `json_convert/excel.py` |
+| `aa_data.py` dict access sin .get() | No existe — el código real usa `.get()` correctamente |
+| `price_analysis.py` NaN propagation | No existe |
+| `quality_report.py` column assumptions | No existe |
+| `history_analysis.py` cache bypass | No existe |
+| `.env.example` con credenciales | Archivo limpio — solo proxies comentados |
+| Tests dependientes de red | Todos los tests usan `unittest.mock` — 0 dependencia de red |
+
+#### 4. Refactor mayor: `pip install -e .` + sys.path.insert removal
+- **Problema**: 5 entry points (`src/extract_*.py`, `src/audit_report.py`, etc.) tenían 4 líneas de `sys.path.insert` + `Path` import
+- **Solución**: 
+  1. Fix `build-backend` en `pyproject.toml` (`setuptools.backends._legacy` → `setuptools.build_meta`)
+  2. Agregar `[tool.setuptools.packages.find]` explícito
+  3. `pip install -e .` — ahora el paquete se importa desde site-packages vía import hook
+  4. Remover `sys.path.insert` + `Path`/`io` imports de los 5 entry points
+  5. Agregar `sys.stdout.reconfigure(encoding='utf-8')` donde faltaba (cp1252 fix)
+- **Resultado**: -43 líneas netas, todos los entry points funcionan sin boilerplate
+- **Nota**: Si alguien clona el repo de cero, necesita `pip install -e .` una vez
+
+### New Gotchas
+| Issue | Detail |
+|-------|--------|
+| **Editable install** | El `.pth` file `__editable__.json_convert-2.0.0.pth` es crítico — sin él, los entry points no encuentran `json_convert` |
+| **Windows cp1252** | `sys.stdout.reconfigure(encoding='utf-8')` necesario en entry points con Unicode en help/docstrings |
+| **setuptools backend** | `setuptools.backends._legacy` no soporta editable installs — usar `setuptools.build_meta` |
+| **Subagent hallucinations** | No asumir que los subagentes leyeron archivos reales — verificar existencia antes de actuar |
+
+### Commits
+```
+93ba517 refactor: pip install -e ., remove sys.path.insert from 5 entry points
+8859327 fix: silent truncation logging, rm duplicate deps, .gitignore, pipeline summary
+dda6c21 feat(excel): add AA manual column, DD manual blanks, column restructure
+```
