@@ -23,6 +23,13 @@ data/urls.json
 
 # Coverage
 .coverage
+.coverage.*
+
+# Ruff cache
+.ruff_cache/
+
+# Mypy cache
+.mypy_cache/
 
 # Cache de navegación
 .url_cache/

@@ -69,6 +69,7 @@ def _pretty_json(obj: object) -> str:
 def _safe_serialize(obj: object, depth: int = 0) -> object:
     """Convierte objetos con potenciales ciclos a tipos JSON-safe."""
     if depth > 20:
+        _log_truncation("max depth reached", str(obj)[:60])
         return str(obj)[:200]
     if isinstance(obj, dict):
         out = {}
@@ -77,13 +78,23 @@ def _safe_serialize(obj: object, depth: int = 0) -> object:
                 out[str(k)] = _safe_serialize(v, depth + 1)
             except Exception:
                 logging.debug("_safe_serialize fallback for key %s", str(k)[:60])
+                _log_truncation(f"key {str(k)[:60]}", str(v)[:60])
                 out[str(k)] = str(v)[:200]
         return out
     if isinstance(obj, (list, tuple)):
-        return [_safe_serialize(item, depth + 1) for item in obj[:50]]
+        truncated = [_safe_serialize(item, depth + 1) for item in obj[:50]]
+        if len(obj) > 50:
+            _log_truncation("list truncated", f"{len(obj)} items -> 50")
+        return truncated
     if isinstance(obj, (str, int, float, bool)) or obj is None:
         return obj
+    _log_truncation(f"type {type(obj).__name__}", str(obj)[:60])
     return str(obj)[:200]
+
+
+def _log_truncation(reason: str, preview: str) -> None:
+    """Log warning when data is truncated during serialization."""
+    logging.warning("Data truncated in _safe_serialize: %s — preview: %s", reason, preview)
 
 
 def _set_col_widths(ws: Any) -> None:
@@ -92,7 +103,7 @@ def _set_col_widths(ws: Any) -> None:
 
 
 def _auto_row_height(ws: Any) -> None:
-    """Ajusta alto de filas segun el maximo de lineas JSON en cols 3-4-5-6-7."""
+    """Ajusta alto de filas segun el maximo de lineas JSON en cols 3-4-5-6-7-8."""
     JSON_COLS = [3, 4, 5, 6, 7, 8]
     LINE_HEIGHT = 15
     MAX_HEIGHT = 409

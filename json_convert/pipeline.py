@@ -216,6 +216,14 @@ async def run_pipeline(
     metrics["total_time"] = sum(metrics["times"])
     metrics["errores_detalle"] = errors_detail
 
+    # Log resumen de fallos parciales
+    if errors_detail:
+        logging.warning("Pipeline completed with %d/%d errors (%.1f%%)",
+                        len(errors_detail), len(urls),
+                        len(errors_detail) / max(len(urls), 1) * 100)
+    else:
+        logging.info("Pipeline completed: %d URLs OK", len(results))
+
     # Guardado final
     save_workbook(ws.parent, output_path)
     logging.info("Guardado final (%d URLs)", len(results))
