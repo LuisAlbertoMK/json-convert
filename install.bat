@@ -88,6 +88,21 @@ if %errorlevel% neq 0 (
 echo    Paquetes OK
 
 echo.
+echo 2b. Instalando el paquete json-convert como editable...
+python -m pip install --user --quiet --no-warn-script-location -e .
+if !errorlevel! neq 0 (
+    echo [ERROR] Fallo la instalacion del paquete json-convert.
+    echo.
+    echo Posibles causas:
+    echo   - pip desactualizado: python -m pip install --upgrade pip
+    echo   - Permisos: intentA sin --user o como administrador
+    echo.
+    pause
+    exit /b 1
+)
+echo    json-convert OK
+
+echo.
 echo 3. Instalando Chromium para Playwright...
 
 set PLAYWRIGHT_BROWSERS_PATH=%LOCALAPPDATA%\ms-playwright
