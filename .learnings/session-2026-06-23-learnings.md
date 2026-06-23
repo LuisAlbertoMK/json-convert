@@ -187,3 +187,52 @@ python -m pytest --tb=short -q
 8859327 fix: silent truncation logging, rm duplicate deps, .gitignore, pipeline summary
 dda6c21 feat(excel): add AA manual column, DD manual blanks, column restructure
 ```
+
+---
+
+## Session 4: MX Blog — expected.json con valores reales + catalog fix (2026-06-23 ~20:00)
+
+### What was done
+
+#### 1. Extraídos digitalData reales de 10 URLs MX blog
+- **Formato pageName**: `blog:expert:<title>` (en inglés, sin prefijo `fmx:`) — ✅ ya es US Global
+- **siteSection legacy**: `incentives` → target: `blog`
+- **variantName legacy**: `gallery-load` → target: `blog-load`
+- **pageType**: no existe → debe crearse como `blog`
+- **hierarchy legacy**: `shopping tools:blog` → target: `blog:expert`
+
+#### 2. Buscados valores esperados en documentos fuente
+- **PAGES VARIABLES** (Ford AEM Mexico & PRCCA): no hay entradas blog/experto
+- **BRD US Global** (Variable Map): define las variables pero no valores específicos para blog
+- **Conclusión**: blog no está documentado en ningún BRD — los valores actuales se obtuvieron de la extracción real
+
+#### 3. Corregido expected.json para MX blog
+- pageName pattern: `fmx:blog:experto` → `blog:expert:` (startswith)
+- siteSection: target `blog`
+- variantName: target `blog-load`
+- pageType: required con valor `blog`
+- Se agregaron `note` fields explicativos a cada parámetro
+
+#### 4. Arreglado generate_migration_catalog.py
+- `compare_page()` ahora usa `startswith` para pattern rules en pageName
+- Antes: exact match (`==`) — nunca coincidía porque el título varía por artículo
+- Ahora: si `actual.startswith(expected)` → ✅ alineado
+- Resultado: alineados pasaron de 28.6% → 42.9%
+
+#### 5. Creación de documentación
+- `MIGRATION-WORKFLOW.md` — guía completa del pipeline de migración
+- `MX/implementacion-mx-blog.md` — especificación de implementación para Launch/DTM
+
+### New Gotchas
+| Issue | Detail |
+|-------|--------|
+| **pageName de blog** | Las páginas blog MX usan `blog:expert:<title>` **sin prefijo de mercado** — diferente del resto de páginas MX que usan `fmx:` |
+| **Títulos en inglés** | pageName usa título en inglés aunque la URL sea en español |
+| **Sin AA en blog** | 0% Adobe Analytics en blog MX — solo digitalData + GA4 |
+| **BRD no tiene blog** | Ni el PAGES VARIABLES de Mexico ni el Variable Map de US Global tienen entradas para blog |
+| **pattern vs exact** | La comparación de pageName con pattern rule debe ser `startswith` no `==` — el catálogo original mostraba 100% de pageNames como incorrectos |
+
+### Commits (next)
+```
+(data/expected.json, src/generate_migration_catalog.py, data/url-mapping-mx.json, MIGRATION-WORKFLOW.md, MX/implementacion-mx-blog.md)
+```

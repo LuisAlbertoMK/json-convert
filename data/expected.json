@@ -1,5 +1,65 @@
 {
   "markets": {
+    "MX": {
+      "description": "Ford Mexico — blog/experto migracion al estandar US Global",
+      "prefix": "fmx:",
+      "params": {
+        "pageName": {
+          "label": "PAGE NAMES",
+          "rule": "pattern",
+          "patterns": {
+            "blog": "blog:expert:"
+          },
+          "note": "Formato US Global: blog:expert:<article-title> (sin prefijo de mercado)"
+        },
+        "siteSection": {
+          "label": "SITE SECTION (eVar9)",
+          "rule": "mapping",
+          "mapping": {
+            "blog": "blog"
+          },
+          "note": "Cambiar de 'incentives' (legacy) → 'blog'"
+        },
+        "pageNameNoVehicle": {
+          "label": "PAGE NAME NO VEHICLE (eVar11)",
+          "rule": "mirror",
+          "source": "pageName",
+          "note": "Alinear con pageName"
+        },
+        "client": {
+          "label": "CLIENT (eVar14)",
+          "rule": "fixed",
+          "value": "ford-mexico",
+          "note": "Formatear cliente (estandar EUA)"
+        },
+        "site": {
+          "label": "SITE (eVar15)",
+          "rule": "fixed",
+          "value": "ford-brand"
+        },
+        "variantName": {
+          "label": "VARIANT NAME (Direct Call)",
+          "rule": "mapping",
+          "mapping": {
+            "blog": "blog-load"
+          },
+          "note": "Cambiar de 'gallery-load' (legacy) → 'blog-load'"
+        },
+        "pageType": {
+          "label": "PAGE TYPE (eVar129)",
+          "rule": "required",
+          "mapping": {
+            "blog": "blog"
+          },
+          "note": "Nuevo parametro requerido del componente EUA"
+        },
+        "userLanguage": {
+          "label": "USER LANGUAGE (eVar4)",
+          "rule": "deprecated",
+          "note": "No se ocupa en el nuevo componente (se unifica en Launch)"
+        }
+      }
+    },
     "PR": {
       "description": "Ford Puerto Rico — migracion al estandar US Global",
       "prefix": "fpr:",

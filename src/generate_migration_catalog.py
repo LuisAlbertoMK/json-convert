@@ -257,23 +257,30 @@ def compare_page(actual_page: dict, expected_page: dict, cfg: dict,
         if actual_str is None:
             action_emoji = "❌"
             action_text = f"Crear: {detail}"
-        elif actual_str == expected_str:
-            action_emoji = "✅"
-            action_text = "Componente alineado"
         else:
-            action_emoji = "⚠️"
-            if param == "pageName":
-                prefix = cfg.get("prefix", "")
-                if not actual_str.startswith(prefix):
-                    action_text = f"Agregar prefijo '{prefix}'"
-                else:
-                    action_text = "Alinear nomenclatura"
-            elif param == "siteSection":
-                action_text = f"Sección legacy → '{expected_str}'"
-            elif param == "site":
-                action_text = f"Unificar sitio → '{expected_str}'"
+            param_cfg = cfg.get("params", {}).get(param, {})
+            rule = param_cfg.get("rule", "pattern")
+            # Para pattern rules: usar startswith si expected es un prefijo
+            if rule == "pattern" and actual_str.startswith(expected_str):
+                action_emoji = "✅"
+                action_text = "Componente alineado"
+            elif actual_str == expected_str:
+                action_emoji = "✅"
+                action_text = "Componente alineado"
             else:
-                action_text = f"Alinear: {detail}"
+                action_emoji = "⚠️"
+                if param == "pageName":
+                    prefix = cfg.get("prefix", "")
+                    if not actual_str.startswith(prefix):
+                        action_text = f"Agregar prefijo '{prefix}'"
+                    else:
+                        action_text = "Alinear nomenclatura"
+                elif param == "siteSection":
+                    action_text = f"Sección legacy → '{expected_str}'"
+                elif param == "site":
+                    action_text = f"Unificar sitio → '{expected_str}'"
+                else:
+                    action_text = f"Alinear: {detail}"
 
         results.append({
             "param": param,
