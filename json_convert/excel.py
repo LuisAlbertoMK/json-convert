@@ -28,6 +28,7 @@ SHEET_HEADERS = [
     "pagina auditada (URL)",
     "digitaldata (manual)",
     "digitaldata (automatica)",
+    "AA analytics (manual)",
     "AA analytics (automatico)",
     "AA analytics (estructurado)",
     "metadata / extra beacons",
@@ -42,13 +43,14 @@ HEADER_FILLS = {
     "A": PatternFill(start_color="D6E4F0", end_color="D6E4F0", fill_type="solid"),
     "B": PatternFill(start_color="D6E4F0", end_color="D6E4F0", fill_type="solid"),
     "C": PatternFill(start_color="B4C6E7", end_color="B4C6E7", fill_type="solid"),  # manual DD — azul claro
-    "D": PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),  # auto DD — rojo
-    "E": PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"),  # AA auto — amarillo
-    "F": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # AA struct — verde
+    "D": PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),  # auto DD — rojo claro
+    "E": PatternFill(start_color="E8D5F5", end_color="E8D5F5", fill_type="solid"),  # manual AA — lavanda
+    "F": PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid"),  # AA auto — amarillo
+    "G": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),  # AA struct — verde
 }
 
 DATA_FILLS = {
-    "F": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),
+    "G": PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"),
 }
 
 
@@ -85,13 +87,13 @@ def _safe_serialize(obj: object, depth: int = 0) -> object:
 
 
 def _set_col_widths(ws: Any) -> None:
-    for col, w in [("A", 15), ("B", 15), ("C", 80), ("D", 80), ("E", 100), ("F", 80), ("G", 60)]:
+    for col, w in [("A", 15), ("B", 15), ("C", 80), ("D", 80), ("E", 60), ("F", 100), ("G", 80), ("H", 60)]:
         ws.column_dimensions[col].width = w
 
 
 def _auto_row_height(ws: Any) -> None:
     """Ajusta alto de filas segun el maximo de lineas JSON en cols 3-4-5-6-7."""
-    JSON_COLS = [3, 4, 5, 6, 7]
+    JSON_COLS = [3, 4, 5, 6, 7, 8]
     LINE_HEIGHT = 15
     MAX_HEIGHT = 409
     for row in range(2, ws.max_row + 1):
@@ -192,12 +194,12 @@ def apply_data_fills(ws: Any) -> None:
         d = ws.cell(row, 4).value  # digitaldata (automatica)
         if d and isinstance(d, str) and _is_json_error(d):
             ws.cell(row, 4).fill = RED
-        e = ws.cell(row, 5).value  # AA analytics (automatico)
-        if e and isinstance(e, str) and _has_json_data(e):
-            ws.cell(row, 5).fill = YELLOW
-        f = ws.cell(row, 6).value  # AA analytics (estructurado)
+        f = ws.cell(row, 6).value  # AA analytics (automatico)
         if f and isinstance(f, str) and _has_json_data(f):
-            ws.cell(row, 6).fill = DATA_FILLS["F"]
+            ws.cell(row, 6).fill = YELLOW
+        g = ws.cell(row, 7).value  # AA analytics (estructurado)
+        if g and isinstance(g, str) and _has_json_data(g):
+            ws.cell(row, 7).fill = DATA_FILLS["G"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -239,8 +241,8 @@ def split_aa_workbooks(wb: Any, audit_date: str, output_dir: str) -> None:
     con_rows, sin_rows = [], []
     for row in range(2, ws.max_row + 1):
         col_d = ws.cell(row, 4).value  # digitaldata (automatica)
-        col_e = ws.cell(row, 5).value  # AA analytics (automatico)
-        has_data = _has_aa(col_e) or _has_digitaldata(col_d)
+        col_f = ws.cell(row, 6).value  # AA analytics (automatico)
+        has_data = _has_aa(col_f) or _has_digitaldata(col_d)
         if has_data:
             con_rows.append(row)
         else:
@@ -256,7 +258,7 @@ def split_aa_workbooks(wb: Any, audit_date: str, output_dir: str) -> None:
             col_idx = openpyxl.utils.column_index_from_string(col_letter)
             sws.cell(1, col_idx).fill = fill
         for row_num in rows:
-            for col in range(1, 8):
+            for col in range(1, 9):
                 src = ws.cell(row_num, col)
                 dst = sws.cell(row_num, col)
                 dst.value = src.value

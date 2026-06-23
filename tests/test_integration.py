@@ -81,8 +81,8 @@ class TestMultisheetPipeline(unittest.TestCase):
         self.assertIn("_control", wb.sheetnames)
         self.assertIn(audit_date, wb.sheetnames)
 
-        # Verificar headers (nuevo layout: 7 columnas)
-        headers = [ws.cell(1, c).value for c in range(1, 8)]
+        # Verificar headers (layout actual: 8 columnas)
+        headers = [ws.cell(1, c).value for c in range(1, 9)]
         self.assertEqual(headers, SHEET_HEADERS)
 
         # setup_multisheet crea estructura + headers.
@@ -465,16 +465,16 @@ class TestWriteResultIntegration(unittest.TestCase):
         self.assertEqual(metrics["errors"], 0)
         self.assertEqual(metrics["total_beacons"], 2)  # 1 principal + 1 extra
 
-        # Verificar celdas — nuevo layout:
-        #   C (3) = digitaldata manual, D (4) = digitaldata auto
-        #   E (5) = AA analytics, G (7) = metadata
-        dd_manual = self.ws.cell(2, 3).value  # col C = digitaldata (manual/primary)
-        self.assertIn("home", dd_manual or "")
+        # Verificar celdas — layout actual:
+        #   C (3) = digitaldata manual (vacío), D (4) = digitaldata auto
+        #   E (5) = AA manual, F (6) = AA analytics, H (8) = metadata
+        dd_manual = self.ws.cell(2, 3).value  # col C = digitaldata (manual) — debe estar VACÍO
+        self.assertIsNone(dd_manual)
         dd_auto = self.ws.cell(2, 4).value  # col D = digitaldata (automatica)
         self.assertIn("home", dd_auto or "")
-        aa_val = self.ws.cell(2, 5).value  # col E = AA analytics
+        aa_val = self.ws.cell(2, 6).value  # col F = AA analytics (automatico)
         self.assertIn("event1", aa_val or "")
-        meta_val = self.ws.cell(2, 7).value  # col G = metadata
+        meta_val = self.ws.cell(2, 8).value  # col H = metadata
         self.assertIn("score", meta_val or "")
         self.assertIn("beacon", meta_val or "")
 
@@ -497,19 +497,20 @@ class TestWriteResultIntegration(unittest.TestCase):
         self.assertEqual(metrics["total_beacons"], 1)  # 1 default
         self.assertEqual(len(metrics["errores_detalle"]), 1)
 
-        # Verificar col E = error en AA
-        aa_val = self.ws.cell(2, 5).value
+        # Verificar col F (AA auto) = error
+        aa_val = self.ws.cell(2, 6).value
         self.assertIn("timeout", aa_val or "")
         self.assertIn("TIMEOUT", aa_val or "")
 
-        # Verificar col C (manual) y D (auto) = error en JSON
+        # Verificar col C (manual) = VACÍO (se deja para relleno manual)
         dd_manual = self.ws.cell(2, 3).value
-        self.assertIn("no digitaldata", dd_manual or "")
+        self.assertIsNone(dd_manual)
+        # col D (auto) = error en JSON
         dd_auto = self.ws.cell(2, 4).value
         self.assertIn("no digitaldata", dd_auto or "")
 
-        # Verificar metadata incluye el error (col G)
-        meta_val = self.ws.cell(2, 7).value
+        # Verificar metadata incluye el error (col H)
+        meta_val = self.ws.cell(2, 8).value
         self.assertIn("TIMEOUT", meta_val or "")
 
     def test_write_partial_result(self):
@@ -529,16 +530,16 @@ class TestWriteResultIntegration(unittest.TestCase):
         self.assertEqual(metrics["ok_aa"], 0)
         self.assertEqual(metrics["errors"], 1)  # por aa_parsed=None
 
-        # col C (manual) = digitaldata
+        # col C (manual) = VACÍO (se deja para relleno manual)
         dd_manual = self.ws.cell(2, 3).value
-        self.assertIn("home", dd_manual or "")
+        self.assertIsNone(dd_manual)
 
         # col D (auto) = digitaldata
         dd_auto = self.ws.cell(2, 4).value
         self.assertIn("home", dd_auto or "")
 
-        # col E = error en JSON (no "parentizado")
-        aa_val = self.ws.cell(2, 5).value
+        # col F (AA auto) = error en JSON
+        aa_val = self.ws.cell(2, 6).value
         self.assertIn("no AA data captured", aa_val or "")
         self.assertIn("NO_AA_DATA", aa_val or "")
 

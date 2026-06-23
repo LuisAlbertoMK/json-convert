@@ -156,12 +156,12 @@ def main():
     aa_no = 0
     for r in range(2, source_ws.max_row + 1):
         col_d = source_ws.cell(r, 4).value
-        col_e = source_ws.cell(r, 5).value
+        col_f = source_ws.cell(r, 6).value
         if _has_digitaldata(col_d):
             dd_yes += 1
         else:
             dd_no += 1
-        if _has_aa(col_e):
+        if _has_aa(col_f):
             aa_yes += 1
         else:
             aa_no += 1
@@ -173,8 +173,8 @@ def main():
     both = 0
     for r in range(2, source_ws.max_row + 1):
         col_d = source_ws.cell(r, 4).value
-        col_e = source_ws.cell(r, 5).value
-        if _has_digitaldata(col_d) or _has_aa(col_e):
+        col_f = source_ws.cell(r, 6).value
+        if _has_digitaldata(col_d) or _has_aa(col_f):
             both += 1
     print(both)
 

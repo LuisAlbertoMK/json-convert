@@ -38,7 +38,7 @@ def _make_ws(rows: list[list]) -> openpyxl.Workbook:
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "2025-01-15"
-    ws.append(["url", "titulo", "dd_manual", "dd_auto", "aa_auto", "aa_est", "beacons"])
+    ws.append(["url", "titulo", "dd_manual", "dd_auto", "aa_manual", "aa_auto", "aa_est", "beacons"])
     for r in rows:
         ws.append(r)
     return wb
@@ -200,7 +200,7 @@ class TestApplyDataFills(unittest.TestCase):
         """Col C y D con error JSON → fill rojo."""
         error_json = '{"error": "no data", "code": 500}'
         wb = _make_ws([
-            ["url", "t", error_json, error_json, "{}", "{}"],
+            ["url", "t", error_json, error_json, "", "{}", "{}"],
         ])
         ws = wb.active
         apply_data_fills(ws)
@@ -210,35 +210,35 @@ class TestApplyDataFills(unittest.TestCase):
         self.assertEqual(ws.cell(2, 4).fill.start_color.rgb, "00FFC7CE")
 
     def test_yellow_fill_on_valid_aa(self):
-        """Col E con JSON válido → fill amarillo."""
+        """Col F (AA auto) con JSON válido → fill amarillo."""
         aa_json = '{"solution": "analytics", "pageName": "test"}'
         wb = _make_ws([
-            ["url", "t", "", "{}", aa_json, ""],
+            ["url", "t", "", "{}", "", aa_json, ""],
         ])
         ws = wb.active
         apply_data_fills(ws)
-        self.assertEqual(ws.cell(2, 5).fill.start_color.rgb, "00FFEB9C")
+        self.assertEqual(ws.cell(2, 6).fill.start_color.rgb, "00FFEB9C")
 
     def test_no_fill_on_empty(self):
         """Celdas vacías → sin fill."""
         wb = _make_ws([
-            ["url", "t", "", "", "", ""],
+            ["url", "t", "", "", "", "", "", ""],
         ])
         ws = wb.active
         apply_data_fills(ws)
         # Todas deben tener fill sin color (tema por defecto)
-        for col in range(3, 7):
+        for col in range(3, 9):
             fill = ws.cell(2, col).fill
             self.assertEqual(fill.fill_type, None)
 
     def test_skips_header_row(self):
         """Fila 1 (header) no debe recibir fill."""
         wb = _make_ws([
-            ["url", "t", '{"error":"x"}', '{"error":"x"}', '{"solution":"a"}', '{"page":"ok"}'],
+            ["url", "t", '{"error":"x"}', '{"error":"x"}', "", '{"solution":"a"}', '{"page":"ok"}'],
         ])
         ws = wb.active
         apply_data_fills(ws)
-        for col in range(1, 8):
+        for col in range(1, 9):
             fill = ws.cell(1, col).fill
             self.assertEqual(fill.fill_type, None)
 
@@ -256,8 +256,8 @@ class TestSplitAAWorkbooks(unittest.TestCase):
     def test_split_with_aa_and_without(self):
         """Filas con AA → con_aa.xlsx, sin AA → sin_aa.xlsx."""
         wb = _make_ws([
-            ["url1", "t1", "", '{"page":"ok"}', '{"solution":"a"}', "", ""],  # tiene aa+dd
-            ["url2", "t2", "", "", "", "", ""],  # no tiene nada
+            ["url1", "t1", "", '{"page":"ok"}', "", '{"solution":"a"}', "", ""],  # tiene aa+dd
+            ["url2", "t2", "", "", "", "", "", ""],  # no tiene nada
         ])
         ws = wb.active
         split_aa_workbooks(wb, ws.title, self.tmpdir)
@@ -271,7 +271,7 @@ class TestSplitAAWorkbooks(unittest.TestCase):
         con_wb = openpyxl.load_workbook(con_path)
         con_ws = con_wb[ws.title]
         self.assertEqual(con_ws.cell(2, 1).value, "url1")
-        self.assertEqual(con_ws.cell(2, 5).value, '{"solution":"a"}')
+        self.assertEqual(con_ws.cell(2, 6).value, '{"solution":"a"}')
         con_wb.close()
 
         # sin_aa: rows copied preservando número original (row 3)
@@ -283,8 +283,8 @@ class TestSplitAAWorkbooks(unittest.TestCase):
     def test_split_all_con_aa(self):
         """Todas las filas tienen AA → con_aa.xlsx solo."""
         wb = _make_ws([
-            ["url1", "t1", "", "", '{"solution":"a"}', "", ""],
-            ["url2", "t2", "", "", '{"solution":"b"}', "", ""],
+            ["url1", "t1", "", "", "", '{"solution":"a"}', "", ""],
+            ["url2", "t2", "", "", "", '{"solution":"b"}', "", ""],
         ])
         ws = wb.active
         split_aa_workbooks(wb, ws.title, self.tmpdir)
@@ -303,9 +303,9 @@ class TestSplitAAWorkbooks(unittest.TestCase):
         sin_wb.close()
 
     def test_split_only_dd_no_aa(self):
-        """Solo digitalData (col D) sin AA (col E) → con_aa igual."""
+        """Solo digitalData (col D) sin AA → con_aa igual."""
         wb = _make_ws([
-            ["url1", "t1", "", '{"page":"ok"}', "", "", ""],
+            ["url1", "t1", "", '{"page":"ok"}', "", "", "", ""],
         ])
         ws = wb.active
         split_aa_workbooks(wb, ws.title, self.tmpdir)

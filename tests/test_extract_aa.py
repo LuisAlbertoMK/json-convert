@@ -32,7 +32,7 @@ SAMPLE_AA_JSON = {
 def _make_excel_with_aa(path: str, rows: list[dict | str | None],
                          headers: bool = True,
                          sheet_name: str = "data"):
-    """Crea Excel con datos AA en col E (col 5) — formato nuevo de 7 cols."""
+    """Crea Excel con datos AA en col F (col 6) — formato de 8 cols."""
     import openpyxl
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -42,22 +42,23 @@ def _make_excel_with_aa(path: str, rows: list[dict | str | None],
         ws.cell(1, 2).value = "pagina auditada (URL)"
         ws.cell(1, 3).value = "digitaldata (manual)"
         ws.cell(1, 4).value = "digitaldata (automatica)"
-        ws.cell(1, 5).value = "AA analytics (automatico)"
-        ws.cell(1, 6).value = "AA analytics (estructurado)"
-        ws.cell(1, 7).value = "metadata / extra beacons"
+        ws.cell(1, 5).value = "AA analytics (manual)"
+        ws.cell(1, 6).value = "AA analytics (automatico)"
+        ws.cell(1, 7).value = "AA analytics (estructurado)"
+        ws.cell(1, 8).value = "metadata / extra beacons"
     for i, aa_data in enumerate(rows, start=2):
         if aa_data is None:
-            ws.cell(i, 5).value = None
+            ws.cell(i, 6).value = None
         elif isinstance(aa_data, str):
-            ws.cell(i, 5).value = aa_data
+            ws.cell(i, 6).value = aa_data
         else:
-            ws.cell(i, 5).value = json.dumps(aa_data, ensure_ascii=False)
+            ws.cell(i, 6).value = json.dumps(aa_data, ensure_ascii=False)
     wb.save(path)
     wb.close()
 
 
 class TestExtractAAPipeline(unittest.TestCase):
-    """Pipeline completo: Excel → extract_fields → escritura col F."""
+    """Pipeline completo: Excel → extract_fields → escritura col G."""
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -115,7 +116,7 @@ class TestExtractAAPipeline(unittest.TestCase):
         # Header-aware column detection (como extract_aa.py real)
         hdr = {str(ws.cell(1, c).value or "").strip().lower(): c
                for c in range(1, ws.max_column + 1)}
-        aa_src_col = hdr.get("aa analytics (automatico)", 5)
+        aa_src_col = hdr.get("aa analytics (automatico)", 6)
 
         keep = keep or DEFAULT_KEEP
         total = 0
@@ -139,7 +140,7 @@ class TestExtractAAPipeline(unittest.TestCase):
             if not extracted:
                 errores.append((row, "NO_FIELDS_MATCHED"))
                 continue
-            aa_dst_col = hdr.get("aa analytics (estructurado)", 6)
+            aa_dst_col = hdr.get("aa analytics (estructurado)", 7)
             ws.cell(row, aa_dst_col).value = json.dumps(extracted, indent=2, ensure_ascii=False)
             total += 1
 
@@ -202,13 +203,13 @@ class TestExtractAAPipeline(unittest.TestCase):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "data"
-        ws.cell(1, 5).value = "AA analytics (automatico)"
-        ws.cell(1, 6).value = "AA analytics (estructurado)"
-        ws.cell(2, 5).value = json.dumps(SAMPLE_AA_JSON)
+        ws.cell(1, 6).value = "AA analytics (automatico)"
+        ws.cell(1, 7).value = "AA analytics (estructurado)"
+        ws.cell(2, 6).value = json.dumps(SAMPLE_AA_JSON)
 
         # Simular el mismo paso que extract_aa.py: escribir + aplicar fill
         extracted = extract_fields(SAMPLE_AA_JSON, DEFAULT_KEEP)
-        cell = ws.cell(2, 6)
+        cell = ws.cell(2, 7)
         cell.value = json.dumps(extracted, indent=2, ensure_ascii=False)
         cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE",
                                  fill_type="solid")
@@ -236,7 +237,7 @@ class TestExtractAAPipeline(unittest.TestCase):
         self.assertEqual(len(result["errores"]), 0)
 
     def test_pipeline_multiline_json(self):
-        """JSON multilinea en col E se parsea correctamente."""
+        """JSON multilinea en col F se parsea correctamente."""
         multiline = json.dumps(SAMPLE_AA_JSON, indent=2)
         result = self._simulate_extractaa([multiline])
         self.assertEqual(result["total"], 1)

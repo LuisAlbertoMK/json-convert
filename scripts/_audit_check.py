@@ -35,7 +35,7 @@ print(f"  Rows: {ws.max_row - 1}, Cols: {ws.max_column}")
 headers = [str(ws.cell(1, c).value or "") for c in range(1, ws.max_column + 1)]
 print(f"  Headers: {headers}")
 
-# col D = digitaldata (automatica), col E = AA analytics (automatico)
+# col D = digitaldata (automatica), col F = AA analytics (automatico)
 dd_real = 0
 dd_error = 0
 dd_empty = 0
@@ -45,7 +45,7 @@ aa_empty = 0
 
 for r in range(2, ws.max_row + 1):
     col_d = str(ws.cell(r, 4).value or "").strip()
-    col_e = str(ws.cell(r, 5).value or "").strip()
+    col_f = str(ws.cell(r, 6).value or "").strip()
 
     # Classify col D
     if not col_d or col_d == "None":
@@ -57,19 +57,19 @@ for r in range(2, ws.max_row + 1):
     else:
         dd_error += 1  # too small = not real data
 
-    # Classify col E
-    if not col_e or col_e == "None":
+    # Classify col F
+    if not col_f or col_f == "None":
         aa_empty += 1
-    elif "error" in col_e.lower():
+    elif "error" in col_f.lower():
         aa_error += 1
-    elif len(col_e) > 20:
+    elif len(col_f) > 20:
         aa_real += 1
     else:
         aa_error += 1
 
 total = ws.max_row - 1
 print(f"  Col D (digitaldata automatica): real={dd_real}, error={dd_error}, empty={dd_empty}")
-print(f"  Col E (AA analytics automatico): real={aa_real}, error={aa_error}, empty={aa_empty}")
+print(f"  Col F (AA analytics automatico): real={aa_real}, error={aa_error}, empty={aa_empty}")
 
 # Sample real DD
 for r in range(2, ws.max_row + 1):
@@ -82,20 +82,20 @@ for r in range(2, ws.max_row + 1):
 
 # Sample AA real
 for r in range(2, ws.max_row + 1):
-    col_e = str(ws.cell(r, 5).value or "").strip()
-    if len(col_e) > 50 and "error" not in col_e.lower():
+    col_f = str(ws.cell(r, 6).value or "").strip()
+    if len(col_f) > 50 and "error" not in col_f.lower():
         nm = str(ws.cell(r, 1).value or "")[:30]
         print(f"\n  Sample REAL AA (row {r}, page={nm}):")
-        print(f"    {col_e[:400]}")
+        print(f"    {col_f[:400]}")
         break
 
 # Sample AA error
 for r in range(2, ws.max_row + 1):
-    col_e = str(ws.cell(r, 5).value or "").strip()
-    if len(col_e) > 10 and "error" in col_e.lower():
+    col_f = str(ws.cell(r, 6).value or "").strip()
+    if len(col_f) > 10 and "error" in col_f.lower():
         nm = str(ws.cell(r, 1).value or "")[:30]
         print(f"\n  Sample ERROR AA (row {r}, page={nm}):")
-        print(f"    {col_e[:200]}")
+        print(f"    {col_f[:200]}")
         break
 
 wb.close()

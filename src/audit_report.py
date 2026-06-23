@@ -247,8 +247,8 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
 
         dd_manual_col = _hc("digitaldata (manual)", 3)
         dd_auto_col = _hc("digitaldata (automatica)", 3)
-        aa_auto_col = _hc("aa analytics (automatico)", 4)
-        meta_col = _hc("metadata / extra beacons", 6)
+        aa_auto_col = _hc("aa analytics (automatico)", 6)
+        meta_col = _hc("metadata / extra beacons", 8)
 
         for row in range(2, ws.max_row + 1):
             # Intentar URL desde col B; si está vacía, extraer de metadata
@@ -324,8 +324,8 @@ def extract_pages_from_historial(path: str, market: str) -> list[dict]:
                 hv = ws2.cell(1, c).value
                 if hv:
                     h2[str(hv).strip().lower()] = c
-            aa_col = h2.get("aa analytics (automatico)", 4)
-            meta2_col = h2.get("metadata / extra beacons", 6)
+            aa_col = h2.get("aa analytics (automatico)", 6)
+            meta2_col = h2.get("metadata / extra beacons", 8)
             for row in range(2, ws2.max_row + 1):
                 url = ws2.cell(row, 2).value
                 if not url or str(url).strip() in pages:

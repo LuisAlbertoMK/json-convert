@@ -1,7 +1,7 @@
 """
 extract_aa.py — Extrae campos seleccionables del JSON de Adobe Analytics en Excel.
 
-Lee col E (AA analytics automatico), extrae campos elegidos, escribe en col F (estructurado).
+Lee col F (AA analytics automatico), extrae campos elegidos, escribe en col G (estructurado).
 
 Header-aware: detecta columnas por nombre (backwards compat con formato viejo de 6 cols).
 
@@ -184,8 +184,8 @@ def main():
 
     # Header-aware column detection (backwards compat: old=6cols, new=7cols)
     hdr = {str(ws.cell(1, c).value or "").strip().lower(): c for c in range(1, ws.max_column + 1)}
-    aa_src_col = hdr.get("aa analytics (automatico)", 4)   # read from: old col D, new col E
-    aa_dst_col = hdr.get("aa analytics (estructurado)", 5)  # write to: old col E, new col F
+    aa_src_col = hdr.get("aa analytics (automatico)", 6)   # read from: col F
+    aa_dst_col = hdr.get("aa analytics (estructurado)", 7)  # write to: col G
 
     src_col_letter = openpyxl.utils.get_column_letter(aa_src_col)
     if "analytics" not in str(ws.cell(1, aa_src_col).value or "").lower():
