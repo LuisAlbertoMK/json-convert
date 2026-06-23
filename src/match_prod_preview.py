@@ -25,24 +25,14 @@ Output: {market}/match/match-3way.{xlsx,md,html} o match-prod-vs-preview.{xlsx,m
 """
 
 import argparse
-import io
 import json
 import os
 import sys
 from datetime import date
-from pathlib import Path
 
-# Asegurar que la raíz del proyecto esté en sys.path para imports del paquete json_convert
-_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
-
-# Force UTF-8 for emoji-safe output
-if sys.stdout.encoding and sys.stdout.encoding.upper() != "UTF-8":
-    try:
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+# Force UTF-8 stdout for Windows cp1252 terminal (safe in Python >=3.7)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 import openpyxl
 from openpyxl.styles import PatternFill

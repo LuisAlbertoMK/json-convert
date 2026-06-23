@@ -50,6 +50,11 @@ scripts/_check_cols.py
 # Debug scripts (no committed)
 _test*.py
 
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
 # Resúmenes auto-generados (se regeneran desde los .xlsx)
 **/resumen-catalogo-migracion.*
 **/match-prod-vs-preview.*

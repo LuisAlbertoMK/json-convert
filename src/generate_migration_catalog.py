@@ -30,11 +30,10 @@ import os
 import re
 import sys
 from datetime import date
-from pathlib import Path
 
-_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
+# Force UTF-8 stdout for Windows cp1252 terminal (safe in Python >=3.7)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 import openpyxl
 from openpyxl.styles import Border, Font, PatternFill, Side
