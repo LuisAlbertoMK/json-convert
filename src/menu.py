@@ -801,7 +801,6 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
         results.append(("Verificar entorno", 0))
 
     # Pasos 3‑N: Auditoria + Post-proceso por cada entorno
-    any_audit_ok = True
     post_markets = []
 
     for env_idx, env in enumerate(entornos_to_run):
@@ -829,7 +828,6 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
                 audit_ok = (rc == 0)
 
         if not audit_ok:
-            any_audit_ok = False
             print(_c("red", f"  ⚠ Auditoría ({env}) falló."))
             continue
 

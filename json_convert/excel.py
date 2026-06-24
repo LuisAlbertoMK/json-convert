@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import time as _time
 from copy import copy
@@ -79,14 +80,18 @@ def _safe_serialize(obj: object, depth: int = 0) -> object:
             except Exception:
                 logging.debug("_safe_serialize fallback for key %s", str(k)[:60])
                 _log_truncation(f"key {str(k)[:60]}", str(v)[:60])
-                out[str(k)] = str(v)[:200]
+                out[repr(k)[:60]] = str(v)[:200]
         return out
     if isinstance(obj, (list, tuple)):
         truncated = [_safe_serialize(item, depth + 1) for item in obj[:50]]
         if len(obj) > 50:
             _log_truncation("list truncated", f"{len(obj)} items -> 50")
         return truncated
-    if isinstance(obj, (str, int, float, bool)) or obj is None:
+    if isinstance(obj, bool):
+        return obj
+    if isinstance(obj, float):
+        return None if math.isnan(obj) or math.isinf(obj) else obj
+    if isinstance(obj, (str, int)) or obj is None:
         return obj
     _log_truncation(f"type {type(obj).__name__}", str(obj)[:60])
     return str(obj)[:200]

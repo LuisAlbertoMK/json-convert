@@ -29,6 +29,7 @@ from json_convert import (
     apply_data_fills,
     classify_errors,
     compute_score,
+    parse_aa_beacon,
     sanitize_url_for_log,
     save_workbook,
     setup_multisheet,

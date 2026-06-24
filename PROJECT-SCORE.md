@@ -1,38 +1,44 @@
 # Project Score: json-convert
 
-**Current**: 9.0/10
-**Last updated**: 2026-06-19
-**Trend**: improving (+0.2 desde 8.8)
+**Current**: 9.2/10
+**Last updated**: 2026-06-24
+**Trend**: improving (+0.2 desde 9.0)
 
 ## Dimensions
 
 | Dimensión | Score | vs anterior | Notas |
 |-----------|-------|-------------|-------|
-| correctness | 9 | — | 157 tests ✅, argparse F821 corregido |
-| tokens | 9 | — | -148 líneas dead code, imports/vars sin usar eliminados |
-| errorPrevention | **9** | ↑ **+1** | CI gate consolidado: quality-gate.yml (lint + test 3.x) + badge |
-| skill | 9 | — | Aprendizaje de .learnings/, recuperación de errores |
-| speed | 9 | — | Tests en 2-4s, pipeline async |
-| breadth | 9 | — | Cobertura completa en evaluación |
+| correctness | 9 | — | 251 tests ✅, sin regresiones |
+| tokens | 9 | — | ~+5 líneas netas, código muerto eliminado |
+| errorPrevention | **10** | ↑ **+1** | NameError (parse_aa_beacon), Docker build, run.bat, NaN propagation — bugs reales corregidos |
+| skill | 9 | — | Consistente |
+| speed | 9 | — | Tests en 4-5s |
+| breadth | 9 | — | Auditoría 3-subagentes completa |
 
-## Cambios (2026-06-19)
+## Cambios (2026-06-24) — Auditoría 3-subagentes + Corrección
 
-### CI Gate consolidado
+### Hallazgos corregidos (8)
 
-| Antes | Después |
-|-------|---------|
-| 3 workflows fragmentados (test.yml, lint.yml, audit.yml) | 1 quality-gate.yml unificado |
-| `test.yml` instalaba Playwright + Chromium (~180MB, 2min) en cada push | Solo openpyxl, tests en ~15s |
-| Sin badge de status | Badge en README |
-| `--cov-fail-under=60` irreal (coverage real 58%) | Ajustado a 55 en `pyproject.toml` |
-| `unit-tests.yml` untracked (duplicado) | No se trackea — reemplazado por quality-gate |
+| ID | Hallazgo | Fix |
+|----|----------|-----|
+| A1 | `parse_aa_beacon` usado sin import → NameError | Import agregado en `extract_browser.py` |
+| C1 | Dockerfile referencia `config/requirements.txt` eliminado | Cambiado a `pyproject.toml` + `pip install -e .` |
+| C2 | `run.bat` con `%%` en vez de `%` — scripts rotos | Sintaxis batch corregida |
+| S1/S2 | Hardcoded `C:\Users\LuisOrozco` paths | Reemplazado con argparse `--root-hist` |
+| DI-04 | NaN/Inf floats pasan directo a JSON | `math.isnan()` → `None` |
+| DI-01 | `_safe_serialize` except handler fragile | `repr(k)` en vez de `str(k)` |
+| A9 | `any_audit_ok` variable muerta | Eliminada |
+| — | `audit.yml` referencia `config/requirements.txt` | Cambiado a `pyproject.toml` |
 
 ### Archivos modificados
 
 | Archivo | Cambio |
 |---------|--------|
-| `.github/workflows/quality-gate.yml` | **Nuevo**: lint → test 3.x con coverage (no Playwright) |
-| `.github/workflows/test.yml` | **Eliminado**: reemplazado por quality-gate |
-| `pyproject.toml` | `fail_under` → 55 (realista) |
-| `README.md` | Badge CI agregado |
-| `.project.json` | Score actualizado a 9.0 |
+| `src/extract_browser.py` | +parse_aa_beacon import |
+| `Dockerfile` | pyproject.toml + pip install -e . |
+| `run.bat` | %% → % sintaxis batch |
+| `scripts/_audit_check.py` | argparse + if __name__ + sin hardcode |
+| `json_convert/excel.py` | NaN fix + repr(k) + import math |
+| `.github/workflows/audit.yml` | requirements.txt → pyproject.toml |
+| `src/menu.py` | any_audit_ok eliminado |
+| `.project.json` | Score actualizado a 9.2 |
