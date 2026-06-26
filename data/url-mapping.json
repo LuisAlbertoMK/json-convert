@@ -1,43 +1,116 @@
 [
   {
-    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/sandboxpuertoricoespanol/index.html",
-    "page_key": "sandbox-es",
-    "nombre": "Sandbox ES (Preview)"
+    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/donativos-ambientales.html",
+    "production_url": "https://www.ford.com.pr/esp/donativos-ambientales/",
+    "aem_path": "/content/ford/pr/es_pr/sustainability/environment",
+    "page_key": "sustainability",
+    "nombre": "Puerto Rico Español (MX)"
   },
   {
-    "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/sandboxpuertoricoingles/index.html",
-    "page_key": "sandbox-en",
-    "nombre": "Sandbox EN (Preview)"
+    "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/environmental-grants.html",
+    "production_url": "https://www.ford.com.pr/en/environmental-grants/",
+    "aem_path": "/content/ford/pr/en_pr/sustainability/environment",
+    "page_key": "sustainability",
+    "nombre": "Puerto Rico Inglés"
   },
   {
-    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/all-vehicles.html",
-    "page_key": "all-vehicles",
-    "nombre": "All Vehicles (Preview)"
+    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/duenos/tips.html",
+    "production_url": "https://www.ford.com.pr/esp/duenos/",
+    "aem_path": "/content/ford/pr/es_pr/owners",
+    "page_key": "owners",
+    "nombre": "seccion tips:"
   },
   {
-    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/all-vehicles/crossovers-suvs.html",
-    "page_key": "crossovers-suvs",
-    "nombre": "Crossovers/SUVs (Preview)"
+    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/duenos/tips/driving-precautions.html",
+    "production_url": "https://www.ford.com.pr/esp/duenos/tips/driving-precautions/",
+    "aem_path": "/content/ford/pr/es_pr/owners/tips",
+    "page_key": "owners",
+    "nombre": "Driving Precautions"
   },
   {
-    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/all-vehicles/crossovers-suvs.html",
-    "page_key": "crossovers-suvs",
-    "nombre": "Crossovers/SUVs (Preview - indexPath)"
+    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/duenos/tips/fuel-saving.html",
+    "production_url": "https://www.ford.com.pr/esp/duenos/tips/fuel-saving/",
+    "aem_path": "/content/ford/pr/es_pr/owners/tips",
+    "page_key": "owners",
+    "nombre": "Fuel Saving"
+  },
+  {
+    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/duenos/tips/collision-repair.html",
+    "production_url": "https://www.ford.com.pr/esp/duenos/tips/collision-repair/",
+    "aem_path": "/content/ford/pr/es_pr/owners/tips",
+    "page_key": "owners",
+    "nombre": "Collision Repair"
+  },
+  {
+    "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/owners/tips.html",
+    "production_url": "https://www.ford.com.pr/en/owners/",
+    "aem_path": "/content/ford/pr/en_pr/owners",
+    "page_key": "owners",
+    "nombre": "Puerto Rico (Inglés):"
+  },
+  {
+    "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/owners/tips/driving-precautions.html",
+    "production_url": "https://www.ford.com.pr/en/owners/tips/driving-precautions/",
+    "aem_path": "/content/ford/pr/en_pr/owners/tips",
+    "page_key": "owners",
+    "nombre": "Driving Precautions"
+  },
+  {
+    "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/owners/tips/collision-repair.html",
+    "production_url": "https://www.ford.com.pr/en/owners/tips/collision-repair/",
+    "aem_path": "/content/ford/pr/en_pr/owners/tips",
+    "page_key": "owners",
+    "nombre": "Collision Repair"
+  },
+  {
+    "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/owners/tips/fuel-saving.html",
+    "production_url": "https://www.ford.com.pr/en/owners/tips/fuel-saving/",
+    "aem_path": "/content/ford/pr/en_pr/owners/tips",
+    "page_key": "owners",
+    "nombre": "Fuel Saving"
+  },
+  {
+    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/legal.html",
+    "production_url": "https://www.ford.com.pr/esp/legal/",
+    "aem_path": "/content/ford/pr/es_pr/legal",
+    "page_key": "legal",
+    "nombre": "legales"
+  },
+  {
+    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/index/legal/privacy-policy.html",
+    "production_url": "https://www.ford.com.pr/esp/legal/privacy-policy/",
+    "aem_path": "/content/ford/pr/es_pr/legal/privacy",
+    "page_key": "legal",
+    "nombre": "Privacy Policy"
+  },
+  {
+    "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/legal.html",
+    "production_url": "https://www.ford.com.pr/en/legal/",
+    "aem_path": "/content/ford/pr/en_pr/legal",
+    "page_key": "legal",
+    "nombre": "ingles"
+  },
+  {
+    "preview_url": "https://wwwac.preview.brandpr.ford.com/content/na/ford/en_pr/index/legal/privacy-policy.html",
+    "production_url": "https://www.ford.com.pr/en/legal/privacy-policy/",
+    "aem_path": "/content/ford/pr/en_pr/legal/privacy",
+    "page_key": "legal",
+    "nombre": "Privacy Policy"
   },
   {
     "production_url": "https://www.ford.com.pr/esp/all-vehicles/performance/",
     "page_key": "showroom",
-    "nombre": "Performance / Showroom"
+    "nombre": "Performance"
   },
   {
     "production_url": "https://www.ford.com.pr/esp/ev/",
     "page_key": "ev",
-    "nombre": "Vehículos Eléctricos"
+    "nombre": "EV"
   },
   {
     "production_url": "https://www.ford.com.pr/esp/trucks/",
     "page_key": "trucks",
-    "nombre": "Trucks Pick Ups y Vans"
+    "nombre": "Trucks"
   },
   {
     "production_url": "https://www.ford.com.pr/esp/all-vehicles/ev/",
@@ -46,7 +119,43 @@
   },
   {
     "production_url": "https://www.ford.com.pr/esp/trucks/maverick/",
-    "page_key": "maverick",
-    "nombre": "Ford Maverick"
+    "page_key": "trucks",
+    "nombre": "Maverick"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/",
+    "aem_path": "/content/ford/pr/es_pr/home",
+    "page_key": "home",
+    "nombre": "Home ES"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/",
+    "aem_path": "/content/ford/pr/es_pr/home-redirect",
+    "page_key": "home-redirect",
+    "nombre": "Home Redireccionamiento"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/shopping/brochures/",
+    "aem_path": "/content/ford/pr/es_pr/shopping/brochures",
+    "page_key": "brochures",
+    "nombre": "Brochures"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/concesionarios/",
+    "aem_path": "/content/ford/pr/es_pr/shopping/dealer-locator",
+    "page_key": "dealerships",
+    "nombre": "Concesionarios (Dealers)"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/duenos/",
+    "aem_path": "/content/ford/pr/es_pr/owners/dashboard",
+    "page_key": "owners",
+    "nombre": "Dueños - Dashboard"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/trucks/super-duty-f250/",
+    "aem_path": "/content/ford/pr/es_pr/vehicles/super-duty-f250",
+    "page_key": "super-duty-f250",
+    "nombre": "Super Duty F-250"
   }
 ]

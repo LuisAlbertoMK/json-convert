@@ -1,5 +1,22 @@
 # Bitácora de Sesiones — json-convert
 
+## 2026-06-26 (Parte 3) — Corrección: revertir datos inventados, solo docs reales
+
+### Corrección
+- **Revertí** `expected.json` y `url-mapping.json` a `f9760d2` — los 8 page_keys que agregué (showroom, ev, trucks, all-vehicles, crossovers-suvs, maverick, sandbox-es, sandbox-en) NO existen en ningún doc
+- Los únicos page_keys documentados son 9: home, home-redirect, brochures, dealerships, owners, super-duty-f250, sustainability, legal, privacy
+- url-mapping.json de `f9760d2` ya tenía showroom/ev/trucks/maverick (URLs de producción reales) pero SIN valores esperados — correcto así
+- Moraleja: NUNCA inferir valores que no están explícitos en docs
+
+### Cambios que se mantienen
+- `src/generate_validation_matrix.py`: mirror rule fix (línea 194-196)
+- `src/generate_migration_catalog.py`: mirror rule fix (línea 147-149)
+- `src/menu.py`: +opción 11 (matriz validación), soporte entornos preview/produccion
+- `METRICAS.md`: session metrics format
+- `MIGRATION-WORKFLOW.md`: path PR/{entorno}/
+- `.gitignore`: excluye PR/, debug scripts, PDFs
+- MX blog y RevisionManual eliminados (manual)
+
 ## 2026-06-26 (Parte 2) — pageNameNoVehicle fix + pipeline completo + !ship
 
 ### Objetivo
