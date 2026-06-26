@@ -96,5 +96,66 @@
     "aem_path": "/content/ford/pr/en_pr/legal/privacy",
     "page_key": "legal",
     "nombre": "Privacy Policy"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/all-vehicles/performance/",
+    "page_key": "showroom",
+    "nombre": "Performance"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/ev/",
+    "page_key": "ev",
+    "nombre": "EV"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/trucks/",
+    "page_key": "trucks",
+    "nombre": "Trucks"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/all-vehicles/ev/",
+    "page_key": "ev",
+    "nombre": "All Vehicles EV"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/trucks/maverick/",
+    "page_key": "trucks",
+    "nombre": "Maverick"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/",
+    "aem_path": "/content/ford/pr/es_pr/home",
+    "page_key": "home",
+    "nombre": "Home ES"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/",
+    "aem_path": "/content/ford/pr/es_pr/home-redirect",
+    "page_key": "home-redirect",
+    "nombre": "Home Redireccionamiento"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/shopping/brochures/",
+    "aem_path": "/content/ford/pr/es_pr/shopping/brochures",
+    "page_key": "brochures",
+    "nombre": "Brochures"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/concesionarios/",
+    "aem_path": "/content/ford/pr/es_pr/shopping/dealer-locator",
+    "page_key": "dealerships",
+    "nombre": "Concesionarios (Dealers)"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/duenos/",
+    "aem_path": "/content/ford/pr/es_pr/owners/dashboard",
+    "page_key": "owners",
+    "nombre": "Dueños - Dashboard"
+  },
+  {
+    "production_url": "https://www.ford.com.pr/esp/trucks/super-duty-f250/",
+    "aem_path": "/content/ford/pr/es_pr/vehicles/super-duty-f250",
+    "page_key": "super-duty-f250",
+    "nombre": "Super Duty F-250"
   }
 ]
