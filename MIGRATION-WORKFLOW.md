@@ -236,4 +236,4 @@ hierarchy:        "blog:expert"                # derivado de siteSection
 ### PR — General
 - pageName usa `fpr:<categoria>:<subcategoria>` CON prefijo `fpr:`
 - 100% Adobe Analytics presente
-- Catálogo completo generado en `PR/catalogo-migracion.xlsx`
+- Catálogo completo generado en `PR/{entorno}/catalogo-migracion.xlsx` (ej: `PR/produccion/catalogo-migracion.xlsx`)

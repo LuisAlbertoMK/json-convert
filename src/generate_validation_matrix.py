@@ -192,7 +192,14 @@ def resolve_expected(param_name: str, page_key: str, cfg: dict) -> tuple:
                 param_cfg.get("note", "Valor fijo requerido"))
 
     if rule == "mirror":
-        return ("(ver pageName)", "warn",
+        page_name_val = (cfg.get("params", {})
+                         .get("pageName", {})
+                         .get("patterns", {})
+                         .get(page_key, ""))
+        if not page_name_val:
+            return ("(sin pageName)", "warn",
+                    param_cfg.get("note", "Alinear con pageName"))
+        return (page_name_val, "warn",
                 param_cfg.get("note", "Alinear con pageName"))
 
     if rule == "required":
@@ -331,8 +338,13 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                     expected_cfg: dict, output_path: str,
                     catalogo: dict | None = None,
                     catalogo_prod: dict | None = None,
-                    catalogo_docs: dict | None = None):
-    """Genera la matriz de validación Excel."""
+                    catalogo_docs: dict | None = None,
+                    skip_orphans: bool = False):
+    """Genera la matriz de validación Excel.
+
+    Args:
+        skip_orphans: Si True, omite la sección de entradas huérfanas del historial.
+    """
     market_cfg = expected_cfg.get("markets", {}).get(market, {})
     if not market_cfg:
         print(f"[ERR] Mercado '{market}' no encontrado en expected.json")
@@ -510,7 +522,7 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
 
     # ── Historial entries (URLs con digitalData pero sin entry en mapping) ──
     historial_path = historial_preview if entorno in ("preview", "ambas") else historial_prod
-    if historial_path:
+    if not skip_orphans and historial_path:
         index = _build_historial_index(historial_path)
         if index:
             # Cuales URLs del mapping ya fueron cubiertas?
@@ -570,11 +582,12 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
 
     # ── Fila de firma ──
     row += 1
+    extra = "" if not skip_orphans else " (split)"
     ws.cell(row, 1,
             f"Generado: {date.today().isoformat()} | "
             f"Mercado: {market} | Entorno: {entorno} | "
             f"Parámetros: {len(PARAMS_ORDER)} | "
-            f"Páginas: {len(mappings)} (+ orphans)").font = Font(italic=True, color="999999")
+            f"Páginas: {len(mappings)}{extra}").font = Font(italic=True, color="999999")
 
     # Freeze + auto-filter
     ws.freeze_panes = "A2"
@@ -699,6 +712,20 @@ def _catalog_lookup(catalog: dict, url: str, exact_only: bool = False) -> dict |
     return None
 
 
+def _safe_filename(page_key: str, seen: dict[str, int]) -> str:
+    """Genera un nombre de archivo seguro a partir de un page_key.
+
+    Si el page_key ya fue usado, agrega un sufijo numérico (-1, -2...).
+    Ejemplo: 'ev' → 'ev', segunda ocurrencia → 'ev-1'
+    """
+    safe = re.sub(r'[^a-zA-Z0-9_-]', '_', page_key).strip('_-') or "pagina"
+    rank = seen.get(page_key, 0)
+    seen[page_key] = rank + 1
+    if rank > 0:
+        safe = f"{safe}-{rank}"
+    return safe
+
+
 def _safe(val) -> str:
     """Convierte a string seguro para print."""
     s = str(val) if val is not None else ""
@@ -729,6 +756,8 @@ def main():
                              "(ej: docs/ford-pr-catalogo-valores-pre-preview.xlsx)")
     parser.add_argument("--output", default=None,
                         help="Ruta de salida (default: {market}/matriz-validacion-{entorno}.xlsx)")
+    parser.add_argument("--split", action="store_true",
+                        help="Genera un archivo por página en {market}/split/")
     args = parser.parse_args()
 
     # ── Resolver paths ──
@@ -814,18 +843,42 @@ def main():
     h_preview_actual = h_preview if os.path.exists(h_preview) else None
     h_prod_actual = h_prod if os.path.exists(h_prod) else None
 
-    generate_matrix(
-        market=market,
-        entorno=args.entorno,
-        historial_preview=h_preview_actual,
-        historial_prod=h_prod_actual,
-        mappings=mappings,
-        expected_cfg=expected_cfg,
-        output_path=output_path,
-        catalogo=catalogo,
-        catalogo_prod=catalogo_prod,
-        catalogo_docs=catalogo_docs,
-    )
+    if args.split:
+        # Modo split: un archivo por página en {market}/split/
+        split_dir = os.path.join(base_dir, market, "split")
+        os.makedirs(split_dir, exist_ok=True)
+        seen_keys: dict[str, int] = {}
+        for mapping in mappings:
+            safe_name = _safe_filename(mapping.get("page_key", "pagina"), seen_keys)
+            entorno_name = args.entorno
+            split_path = os.path.join(split_dir, f"{entorno_name}-{safe_name}.xlsx")
+            print(f"\n  [{safe_name}] Generando matriz...")
+            generate_matrix(
+                market=market,
+                entorno=args.entorno,
+                historial_preview=h_preview_actual,
+                historial_prod=h_prod_actual,
+                mappings=[mapping],
+                expected_cfg=expected_cfg,
+                output_path=split_path,
+                catalogo=catalogo,
+                catalogo_prod=catalogo_prod,
+                catalogo_docs=catalogo_docs,
+                skip_orphans=True,
+            )
+    else:
+        generate_matrix(
+            market=market,
+            entorno=args.entorno,
+            historial_preview=h_preview_actual,
+            historial_prod=h_prod_actual,
+            mappings=mappings,
+            expected_cfg=expected_cfg,
+            output_path=output_path,
+            catalogo=catalogo,
+            catalogo_prod=catalogo_prod,
+            catalogo_docs=catalogo_docs,
+        )
 
 
 if __name__ == "__main__":

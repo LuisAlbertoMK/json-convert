@@ -145,7 +145,14 @@ def resolve_expected(param_name: str, page_key: str, cfg: dict) -> tuple:
                 param_cfg.get("note", "Valor fijo requerido"))
 
     if rule == "mirror":
-        return ("(ver pageName)", "warn",
+        page_name_val = (cfg.get("params", {})
+                         .get("pageName", {})
+                         .get("patterns", {})
+                         .get(page_key, ""))
+        if not page_name_val:
+            return ("(sin pageName)", "warn",
+                    param_cfg.get("note", "Alinear con pageName"))
+        return (page_name_val, "warn",
                 param_cfg.get("note", "Alinear con pageName"))
 
     if rule == "required":
@@ -783,7 +790,7 @@ def main():
     parser.add_argument("--market", default="PR",
                         help="Código de mercado (PR, MX...)")
     parser.add_argument("--output", default=None,
-                        help="Ruta de salida (default: {market}/catalogo-migracion.xlsx)")
+                        help="Ruta de salida (default: mismo directorio que --historial/catalogo-migracion.xlsx)")
     parser.add_argument("--gen-template", action="store_true",
                         help="Generar url-mapping.json template")
     parser.add_argument("--input", default="RevisionManual.xlsx",
@@ -804,11 +811,11 @@ def main():
             print("  Usar --gen-template para crear el mapping")
             sys.exit(1)
 
-    # Output default: {market}/catalogo-migracion.xlsx
+    # Output default: mismo directorio que el historial
     if args.output is None:
-        market_dir = args.market.upper()
-        os.makedirs(market_dir, exist_ok=True)
-        output_path = os.path.join(market_dir, "catalogo-migracion.xlsx")
+        output_dir = os.path.dirname(args.historial)
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, "catalogo-migracion.xlsx")
     else:
         output_path = args.output
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)

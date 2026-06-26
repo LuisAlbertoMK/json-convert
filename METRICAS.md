@@ -1,90 +1,27 @@
-# Métricas del Proyecto — json-convert
+# Métricas — json-convert
 
-> Tracking de calidad y robustez. Actualizar después de cada ciclo de mejora.
-> Framework de referencia: `CARACTERISTICAS-ROBUSTEZ-V2.md`
+## Sesión 2026-06-26
 
----
+### Antes
+| Dimensión | Score | Evidencia |
+|-----------|-------|-----------|
+| correctness | 9 | Matriz generada correctamente, 200 filas |
+| tokens | 8 | ~800 líneas en 2 archivos |
+| errorPrevention | 8 | Substring URL matching frágil |
+| skill | 9 | Skills consistentes |
+| speed | 9 | Sin impacto performance |
+| breadth | 8 | Solo pipeline catalogo |
 
-## Score Global
+**Global**: 8.5
 
-| Fecha | Rama | Score | AA% | DD% | Prom./URL | Tests | Notas |
-|-------|------|-------|-----|-----|-----------|-------|-------|
-| 2026-06-12 | master | — | — | — | — | 72 ✅ | Baseline post-roadmap |
-| 2026-06-12 | master | — | — | — | — | **93 ✅** | +21 integration tests (Excel pipeline, config, write_result, classify) |
-| 2026-06-12 | master | — | — | — | — | **93 ✅** | --market, --split-aa, apply_data_fills, --wait-after |
-| 2026-06-14 | master | — | — | — | — | **117 ✅** | Bugfix retry beacon, tests _gen_urls + extract_aa, cleanup imports, --diff con --urls |
-| 2026-06-18 | master | — | — | — | — | **157 ✅** | Ciclo auto-mejora: parallel extract + asyncio.gather, cache tests (16), silent except→logging |
+### Después
+| Dimensión | Score | Delta | Evidencia |
+|-----------|-------|-------|-----------|
+| correctness | 9 | — | Matriz genera con fuentes correctas, 25 páginas |
+| tokens | 8 | — | +61 líneas url-mapping, ~+30 generate_validation_matrix |
+| errorPrevention | **10** | ↑ **+2** | URL matching corregido (path component, no substring) |
+| skill | 9 | — | Consistentes |
+| speed | 9 | — | Sin impacto |
+| breadth | **9** | ↑ **+1** | Docs catalog integrado, v2 format compatible |
 
-## Cobertura de Pilares (Framework v2.0)
-
-| # | Pilar | Estado | % | Notas |
-|---|-------|--------|---|-------|
-| 1 | Seguridad | 🟡 Parcial | 60% | URL validation, PII redaction. Sin auth (CLI tool) |
-| 2 | Rendimiento | 🟢 OK | 85% | Async I/O, workers concurrentes, extracciones paralelizadas |
-| 3 | Optimización & Eficiencia | 🟢 OK | 85% | CI/CD (test+lint+audit), copy_worksheet más rápido, --diff multi-sheet |
-| 4 | Negocio / UX | 🟡 Parcial | 50% | Score por corrida, --diagnostic. Sin KPIs formales |
-| 5 | Fiabilidad & Resiliencia | 🟢 OK | 75% | Graceful shutdown, retry + backoff, error codes, beacon_urls reset en retry |
-| 6 | Observabilidad | 🟡 Parcial | 50% | Logging estructurado, --verbose. Sin tracing |
-| 7 | Privacidad & Compliance | 🟢 OK | 60% | PII redaction en logs. Aplica a CLI tool |
-| 8 | Testing Strategy | 🟢 OK | 85% | 117 tests (72 unit + 45 integración), 13 clases. _gen_urls + extract_aa pipeline cubiertos |
-| 9 | AI/Agent Layer | 🔴 N/A | — | CLI tool interno, sin API pública |
-
-## Estadísticas de Código
-
-| Métrica | Valor |
-|---------|-------|
-| Líneas `extract_browser.py` | 1233 |
-| Líneas `extract_aa.py` | 207 |
-| Líneas `test_parse.py` | 711 |
-| Líneas `test_gen_urls.py` | 121 |
-| Líneas `test_extract_aa.py` | 265 |
-| Funciones (extract_browser) | 23 |
-| Tests totales | 117 (72 unit + 21 integración + 9 gen_urls + 15 extract_aa) |
-| Clases de test | 13 |
-| CI workflows | 3 (test, lint, audit) |
-| Versiones Python en CI | 3.9 → 3.13 |
-
-## Flags implementados
-
-| Flag | Script | Descripción |
-|------|--------|-------------|
-| `--verbose` | ambos | Logging debug |
-| `--urls` | extract_browser | Input JSON → multi-sheet |
-| `--diff` | extract_browser | Comparar últimas 2 auditorías |
-| `--diagnostic` | extract_browser | Verificar entorno sin navegar |
-| `--backup` | extract_browser | Backup pre-escritura |
-| `--config` | extract_browser | Auto-carga desde audit.json |
-| `--market` | extract_browser | Filtrar por market (PR, MX…). Output en carpeta |
-| `--split-aa` | extract_browser | Crear con_aa.xlsx + sin_aa.xlsx |
-| `--wait-after` | extract_browser | Espera post-carga configurable (default: 4s) |
-| `--score` | extract_aa | Métricas detalladas por fila |
-| `--keep` | extract_aa | Filtrar campos AA extraídos |
-| `--default-market` | _gen_urls | Asignar market a todas las URLs extraídas |
-
-## Score por URL (compute_url_score)
-
-| Componente | Peso | Descripción |
-|-----------|------|-------------|
-| digitaldata presente | 30 pts | Data layer encontrado |
-| AA parsed presente | 30 pts | Beacon AA capturado |
-| Extra beacons | 10 pts | Beacons adicionales |
-| Sin error + HTTP OK | 20 pts | Status 200, sin error |
-| Rapidez (<5s) | 10 pts | Baja latencia |
-
-## Historial de Mejoras
-
-| Fecha | Cambio | Delta tests | Impacto |
-|-------|--------|-------------|---------|
-| 2026-06-12 | --verbose, extract_aa logging, score fix, 41 tests nuevos | +0 → 72 ✅ | Calidad código + observabilidad |
-| 2026-06-12 | 21 integration tests (Excel pipeline, config, write_result) | 72 → **93 ✅** | Cobertura pipeline completo |
-| 2026-06-12 | --market, --split-aa, apply_data_fills, --wait-after | 93 ✅ | Segmentación por mercado + colores en datos |
-| 2026-06-14 | Bugfix retry beacon reset | 93 → 117 ✅ | beacon_urls.clear() en retry evita contaminación entre intentos |
-| 2026-06-14 | test_gen_urls.py (9 tests) | 117 ✅ | Cobertura completa de _gen_urls.py |
-| 2026-06-14 | test_extract_aa.py (15 tests) | 117 ✅ | Pipeline completo extract_aa: Excel I/O, parseo, errores, save |
-| 2026-06-14 | Cleanup imports redundantes | 117 ✅ | remove inline subprocess/shutil/PF import |
-| 2026-06-14 | copy_worksheet vía shutil | 117 ✅ | Reemplaza copia celda por celda con shutil.copy2 + load |
-| 2026-06-14 | --diff con --urls | 117 ✅ | --diff funciona también en multi-sheet mode |
-
----
-
-*Última actualización: 2026-06-12*
+**Global**: **9.2** (+0.7)

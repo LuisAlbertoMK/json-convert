@@ -1,7 +1,6 @@
 # Excel — archivos de auditoría (multi-sheet historial)
 *.xlsx
 *.xls
-!RevisionManual.xlsx
 
 # Logs
 *.log
@@ -39,6 +38,11 @@ data/urls.json
 .history/
 config/.menu-config.json
 
+# Directorios de salida de pipeline por mercado (contenido generado)
+PR/
+MX/split/
+PR/split/
+
 # Scripts de diagnóstico / debugging
 scripts/_check_cols.py
 
@@ -49,6 +53,16 @@ scripts/_check_cols.py
 
 # Debug scripts (no committed)
 _test*.py
+
+# Debug / exploration scripts (no committed)
+_check*.py
+_scan*.py
+check_*.py
+inspect_*.py
+verify_*.py
+
+# PDFs (no committed — archivos grandes/binarios)
+docs/*.pdf
 
 # Build artifacts
 *.egg-info/

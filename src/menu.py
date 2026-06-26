@@ -237,47 +237,63 @@ def detect_markets() -> list[tuple[str, str]]:
 
     Busca en subdirectorios (PR/, MX/, etc.), subdirectorios de entorno
     ({market}/{entorno}/) y tambien en la raiz del proyecto.
+    Retorna UNA entrada por combinacion (mercado, entorno).
     Excluye directorios de codigo/documentacion.
     """
     _EXCLUDED_DIRS = frozenset({
         "src", "scripts", "docs", "tests", "logs", "config",
         "json_convert", ".pytest_cache", "__pycache__", "node_modules",
+        "match",  # match/ no es un directorio de mercado
     })
     results: list[tuple[str, str]] = []
     base = Path(BASE_DIR)
 
-    seen: set[str] = set()
+    # Evitar duplicados: set de (label, dir_path)
+    seen: set[tuple[str, str]] = set()
 
-    def _add(path: Path, label: str) -> None:
-        sp = str(path)
-        if sp not in seen:
-            seen.add(sp)
-            results.append((label.upper(), sp))
+    def _add(label: str, filepath: str, dirpath: str) -> None:
+        key = (label, dirpath)
+        if key not in seen:
+            seen.add(key)
+            results.append((label, filepath))
 
-    # Buscar en subdirectorios de mercado (legacy: PR/historial.xlsx)
     for d in base.iterdir():
         dname = d.name
         if not d.is_dir() or dname.startswith(".") or dname.lower() in _EXCLUDED_DIRS:
             continue
-        for candidate in ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]:
-            fp = d / candidate
-            if fp.exists():
-                _add(fp, dname.upper())
 
-        # Buscar en subdirectorios de entorno (PR/preview/, PR/produccion/)
-        for ent in d.iterdir():
-            if not ent.is_dir() or ent.name.startswith("."):
-                continue
+        market_label = dname.upper()
+        dir_str = str(d)
+
+        # 1) Buscar en subdirectorios de entorno: {market}/preview/, {market}/produccion/
+        entornos = sorted(
+            e for e in d.iterdir()
+            if e.is_dir() and not e.name.startswith(".")
+            and e.name.lower() in ("preview", "produccion")
+        )
+        for ent in entornos:
+            entorno_name = ent.name.capitalize()
+            label = f"{market_label} - {entorno_name}"
             for candidate in ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]:
                 fp = ent / candidate
                 if fp.exists():
-                    _add(fp, dname.upper())
+                    _add(label, str(fp), dir_str)
+                    break  # solo un entry por (market, entorno)
 
-    # Buscar tambien en la raiz del proyecto
+        # 2) Legacy: {market}/historial.xlsx (solo si no hay subdirectorios de entorno)
+        if not entornos:
+            for candidate in ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]:
+                fp = d / candidate
+                if fp.exists():
+                    _add(market_label, str(fp), dir_str)
+                    break
+
+    # 3) Legacy: raiz del proyecto
     for candidate in ["historial.xlsx", "con_aa.xlsx", "sin_aa.xlsx"]:
         fp = base / candidate
-        if fp.exists() and str(fp) not in seen:
-            results.append(("RAIZ", str(fp)))
+        if fp.exists():
+            _add("RAIZ", str(fp), str(base))
+            break
 
     return results
 
@@ -460,12 +476,13 @@ def op_reporte(non_interactive: bool = False) -> None:
         print(_c("green", "\n  [OK] Reporte global generado: reporte_auditoria.xlsx"))
         markets = detect_markets()
         for m, _ in markets:
-            if m != "RAIZ":
+            m_code = m.split(" - ")[0]
+            if m_code != "RAIZ":
                 for ent in ("produccion", "preview"):
-                    ep = os.path.join(BASE_DIR, m, ent, "historial.xlsx")
+                    ep = os.path.join(BASE_DIR, m_code, ent, "historial.xlsx")
                     if os.path.exists(ep):
-                        print(_c("green", f"       {m}/{ent}/historial.xlsx"))
-                print(_c("green", f"       {m}/reporte-auditoria.xlsx"))
+                        print(_c("green", f"       {m_code}/{ent}/historial.xlsx"))
+                print(_c("green", f"       {m_code}/reporte-auditoria.xlsx"))
         if confirm("  Abrir el global?"):
             open_file("reporte_auditoria.xlsx")
     else:
@@ -520,9 +537,10 @@ def op_catalogo(non_interactive: bool = False) -> None:
         print("  Debe existir con las reglas del estandar US para cada mercado.")
         return
 
-    # Generar catalogo
+    # Generar catalogo en la misma carpeta del historial (PR/preview/ o PR/produccion/)
     output_name = "catalogo-migracion.xlsx"
-    output_path = os.path.join(BASE_DIR, market_name, output_name)
+    historial_dir = os.path.dirname(historial_path)
+    output_path = os.path.join(historial_dir, output_name)
 
     # Mostrar resumen antes de ejecutar
     print()
@@ -531,7 +549,7 @@ def op_catalogo(non_interactive: bool = False) -> None:
     print("    Historial:    " + os.path.relpath(historial_path, BASE_DIR))
     print("    Mapping:      url-mapping.json")
     print("    Expected:     expected.json")
-    print("    Output:       " + market_name + "/" + output_name)
+    print("    Output:       " + os.path.relpath(output_path, BASE_DIR))
     print()
 
     if confirm("  Generar catalogo?", default=True):
@@ -540,11 +558,12 @@ def op_catalogo(non_interactive: bool = False) -> None:
              "--historial", historial_path,
              "--mapping", "data/url-mapping.json",
              "--expected", "data/expected.json",
-             "--market", market_name],
+             "--market", market_name.split(" - ")[0],
+             "--output", output_path],
             "Generando catalogo de migracion...", timeout=60)
 
         if os.path.exists(output_path):
-            print(_c("green", "\n  [OK] Catalogo generado: " + market_name + "/" + output_name))
+            print(_c("green", "\n  [OK] Catalogo generado: " + os.path.relpath(output_path, BASE_DIR)))
             if confirm("  Abrirlo ahora?", default=True):
                 open_file(output_path)
 
@@ -583,8 +602,9 @@ def op_match() -> None:
 
     print(_c("cyan", "  Mercados detectados:"))
     for i, (m, hpath) in enumerate(markets, 1):
+        m_code = m.split(" - ")[0]
         extra = ""
-        prev_path = os.path.join(BASE_DIR, m, "historial_preview.xlsx")
+        prev_path = os.path.join(BASE_DIR, m_code, "historial_preview.xlsx")
         if os.path.exists(prev_path):
             extra = _c("green", " [preview OK]")
         else:
@@ -596,7 +616,8 @@ def op_match() -> None:
     else:
         m_idx = ask_int("  Selecciona mercado [1-" + str(len(markets)) + "]: ", 1, len(markets))
 
-    market_name, historial_path = markets[m_idx - 1]
+    market_label, historial_path = markets[m_idx - 1]
+    market_name = market_label.split(" - ")[0]  # "PR - Preview" → "PR"
     mapping_path = os.path.join(BASE_DIR, "data/url-mapping.json")
     expected_path = os.path.join(BASE_DIR, "data/expected.json")
 
@@ -625,7 +646,7 @@ def op_match() -> None:
              "--mapping", mapping_path,
              "--expected", expected_path,
              "--market", market_name] + preview_arg,
-            f"Match {market_name}...", timeout=60)
+            f"Match {market_label}...", timeout=60)
 
         output_path = os.path.join(BASE_DIR, market_name, "match-prod-vs-preview.xlsx")
         if os.path.exists(output_path):
@@ -635,16 +656,113 @@ def op_match() -> None:
                 open_file(os.path.join(BASE_DIR, market_name, "match-prod-vs-preview.html"))
 
 
+def op_validacion() -> None:
+    """Opcion 11: Generar matriz de validación."""
+    header("MATRIZ DE VALIDACION - generate_validation_matrix.py")
+
+    markets = detect_markets()
+    if not markets:
+        print(_c("yellow", "  No se encontraron archivos de auditoria."))
+        print("  Ejecuta primero una auditoria (opcion 1 o 2).")
+        return
+
+    # Detectar mercados únicos (sin duplicar preview/produccion)
+    seen = {}
+    for label, hpath in markets:
+        m_code = label.split(" - ")[0]
+        if m_code not in seen:
+            seen[m_code] = hpath
+
+    market_list = sorted(seen.items())
+    print(_c("cyan", "  Mercados detectados:"))
+    for i, (m, hpath) in enumerate(market_list, 1):
+        extra = ""
+        preview_dir = os.path.join(BASE_DIR, m, "preview")
+        prod_dir = os.path.join(BASE_DIR, m, "produccion")
+        preview_ok = os.path.exists(os.path.join(preview_dir, "historial.xlsx"))
+        prod_ok = os.path.exists(os.path.join(prod_dir, "historial.xlsx"))
+        if preview_ok or prod_ok:
+            extra = _c("green", "  [preview+produccion OK]" if preview_ok and prod_ok
+                       else _c("yellow", "  [parcial]"))
+        else:
+            extra = _c("dim", "  [sin historial]")
+        print(f"    {i}. {m}{extra}")
+
+    idx = ask_int("  Selecciona mercado [1-" + str(len(market_list)) + "]: ", 1, len(market_list))
+    market_name = market_list[idx - 1][0]
+
+    print()
+    print("  " + _c("bold", "Entorno:"))
+    print("    " + _c("bold", "1") + ") Preview")
+    print("    " + _c("bold", "2") + ") Produccion")
+    print("    " + _c("bold", "3") + ") Ambas (Preview vs Produccion lado a lado)")
+    e_idx = ask_int("  Elige [1-3]: ", 1, 3)
+    entorno_map = {1: "preview", 2: "produccion", 3: "ambas"}
+    entorno = entorno_map[e_idx]
+
+    mapping_path = os.path.join(BASE_DIR, "data/url-mapping.json")
+    expected_path = os.path.join(BASE_DIR, "data/expected.json")
+    if not os.path.exists(mapping_path):
+        print(_c("red", "  No se encuentra data/url-mapping.json"))
+        return
+    if not os.path.exists(expected_path):
+        print(_c("red", "  No se encuentra data/expected.json"))
+        return
+
+    split_files = confirm("  ¿Archivos separados por página?", default=False)
+
+    if confirm(f"  Generar matriz de validación para {market_name} ({entorno})?", default=True):
+        cmd = [sys.executable, "src/generate_validation_matrix.py",
+               "--market", market_name,
+               "--entorno", entorno,
+               "--mapping", mapping_path,
+               "--expected", expected_path]
+        if split_files:
+            cmd.append("--split")
+
+        # Add explicit historial paths for non-standard layout
+        preview_path = os.path.join(BASE_DIR, market_name, "preview", "historial.xlsx")
+        prod_path = os.path.join(BASE_DIR, market_name, "produccion", "historial.xlsx")
+        if entorno in ("preview", "ambas") and os.path.exists(preview_path):
+            cmd += ["--historial-preview", preview_path]
+        if entorno in ("produccion", "ambas") and os.path.exists(prod_path):
+            cmd += ["--historial-produccion", prod_path]
+
+        run_step(cmd, f"Matriz validación {market_name}...", timeout=120)
+
+        if split_files:
+            split_dir = os.path.join(BASE_DIR, market_name, "split")
+            if os.path.exists(split_dir):
+                count = len([f for f in os.listdir(split_dir) if f.endswith(".xlsx")])
+                print(_c("green", f"\n  [OK] {count} matrices generadas en: {market_name}/split/"))
+                if confirm("  Abrir carpeta?", default=True):
+                    open_file(split_dir)
+        else:
+            output_name = f"matriz-validacion-{entorno}.xlsx"
+            output_path = os.path.join(BASE_DIR, market_name, output_name)
+            if os.path.exists(output_path):
+                print(_c("green", f"\n  [OK] Matriz: {market_name}/{output_name}"))
+                if confirm("  Abrir el Excel?", default=True):
+                    open_file(output_path)
+
+
 def op_ver_resumen() -> None:
-    """Opcion 11: Abrir resumen del catálogo .html."""
+    """Opcion 12: Abrir resumen del catálogo .html."""
     header("RESUMEN CATALOGO MIGRACION")
 
-    # Buscar resumenes .html en directorios de mercado
+    # Buscar resumenes .html en directorios de mercado (incluyendo preview/produccion/)
     resumenes = []
     base = Path(BASE_DIR)
     for d in base.iterdir():
         if not d.is_dir() or d.name.startswith("."):
             continue
+        # Buscar en {market}/preview/ y {market}/produccion/
+        for sub in ("preview", "produccion"):
+            html_path = d / sub / "resumen-catalogo-migracion.html"
+            if html_path.exists():
+                label = f"{d.name.upper()} - {sub.capitalize()}"
+                resumenes.append((label, str(html_path)))
+        # Legacy: {market}/resumen-catalogo-migracion.html
         html_path = d / "resumen-catalogo-migracion.html"
         if html_path.exists():
             resumenes.append((d.name.upper(), str(html_path)))
@@ -836,10 +954,11 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
         print(_c("cyan", f"  [{step_n + 1}] Post-procesando ({env})..."))
         all_m = detect_markets()
         for m, hpath in all_m:
-            if m in markets_to_run or target_market == ALL_MARKETS:
+            m_code = m.split(" - ")[0]  # "PR - Preview" → "PR"
+            if m_code in markets_to_run or target_market == ALL_MARKETS:
                 _run_extract_aa(hpath)
                 _run_extract_aa_companions(hpath)
-                post_markets.append((m, hpath))
+                post_markets.append((m_code, hpath))  # guardar solo el codigo de mercado
                 results.append((f"Post-proceso {m} ({env})", 0))
 
     # Reportes de fallos por entorno
@@ -955,6 +1074,7 @@ def show_menu() -> int:
     print("  " + _c("bold", "8") + ") " + _c("green", "[T]") + "  Ejecutar tests       pytest")
     print("  " + _c("bold", "9") + ") " + _c("magenta", "[D]") + " Match prod vs preview  comparar prometido vs entregado")
     print("  " + _c("bold", "10") + ") " + _c("blue", "[S]") + "  Ver resumen catálogo   abrir .html")
+    print("  " + _c("bold", "11") + ") " + _c("green", "[V]") + "  Matriz validación     generate_validation_matrix.py")
     print()
     separator("-", 55)
     print("  " + _c("dim", "0") + ") " + _c("dim", "x  Salir"))
@@ -988,6 +1108,8 @@ def run_option(opt: int, non_interactive: bool = False) -> bool:
         op_match()
     elif opt == 10:
         op_ver_resumen()
+    elif opt == 11:
+        op_validacion()
     elif opt == 0:
         print()
         c_print("green", "  Hasta luego!")
@@ -1030,11 +1152,11 @@ if __name__ == "__main__":
     # Modo directo --run
     if args.run:
         opt_map = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
-                   "8": 8, "9": 9, "10": 10, "0": 0, "auto": 1}
+                   "8": 8, "9": 9, "10": 10, "11": 11, "0": 0, "auto": 1}
         opt = opt_map.get(args.run, -1)
         if opt < 0:
             print(_c("red", "[ERROR] Opcion invalida: " + args.run))
-            print("  Valores validos: 1-10, 0, 'auto'")
+            print("  Valores validos: 1-11, 0, 'auto'")
             sys.exit(1)
 
         # Modo no-interactivo: respuestas automaticas
