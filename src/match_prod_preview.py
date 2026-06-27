@@ -110,7 +110,7 @@ def find_digitaldata_in_historial(historial_path: str, url_fragment: str) -> dic
 
     for row in range(2, data_sheet.max_row + 1):
         url_cell = data_sheet.cell(row, 2).value
-        if url_cell and url_fragment in str(url_cell):
+        if url_cell and url_fragment and url_fragment in str(url_cell):
             dd_raw = data_sheet.cell(row, dd_col).value
             wb.close()
             if dd_raw and isinstance(dd_raw, str):

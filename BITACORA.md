@@ -63,3 +63,31 @@ Integrar el `docs/ford-pr-catalogo-valores-pre-preview.xlsx` como fuente de valo
 - 25 páginas en mapping, 11 con datos (6 docs catalog + 5 pipeline catalogo)
 - 14 páginas sin datos — requieren auditoría pipeline
 - Commit: `f9760d2`
+
+## 2026-06-26 (Parte 4) — Reporte auditoría + expected.json completo + MANIFIESTO
+
+### Objetivo
+Completar Fase 1 de la recomendación (expected.json con showroom/ev/trucks), crear manifiesto del proyecto, y verificar pipeline completo.
+
+### Descubrimientos clave
+- **preview_url NO se deriva de aem_path**: los paths en preview usan segmentos traducidos/localizados (ej: `sustainability/environment` → `index/donativos-ambientales.html`). No hay correlación directa.
+- **Reporte auditoría (10 URLs)**: 80% tasa de éxito, 0% con AA (site-wide), todas las URLs de producción funcionan con digitalData
+- **EV real**: `pageName: "showroom:electrified"` (SIN prefijo `fpr:`) — verificado contra producción
+- **showroom real (preview)**: `pageName: "fpr:showroom:all vehicles"` — verificado contra preview
+- **2 orphans en historial**: `all-vehicles.html` y `crossovers-suvs.html` existen en historial pero NO en url-mapping.json
+
+### Bug encontrado
+- `menu.py` match 3-way pasa el MISMO historial para preview y producción (detecta "PR - Preview" y "PR - Produccion" pero match_prod_preview.py recibe ambos como preview)
+
+### Cambios
+- `data/expected.json`: +3 page_keys (showroom, ev, trucks) con valores REALES verificados
+- `MANIFIESTO.md`: nuevo — documento fuente con misión, rol, aprendizajes, anti-patrones, roadmap
+- Engram: guardado patrón "leer MANIFIESTO.md cada sesión"
+
+### Pipeline verificado
+- ✅ 251/251 tests
+- ✅ Catálogo migración: 25 URLs generadas
+- ✅ Match 3-way: 25 entradas, 175 parámetros
+- ✅ Matriz validación: 216 filas, ✅52 ⚠️41 ❌123
+- ⬜ Audit Playwright pendiente (14 URLs sin datos)
+- ⬜ Integrar reporte_auditoria.xlsx en nota (Fase 3)

@@ -709,7 +709,12 @@ def op_validacion() -> None:
         print(_c("red", "  No se encuentra data/expected.json"))
         return
 
-    split_files = confirm("  ¿Archivos separados por página?", default=False)
+    print()
+    print("  " + _c("bold", "Formato de salida:"))
+    print("    " + _c("bold", "1") + ") Todo en un mismo xlsx (varias sheets — una por URL)")
+    print("    " + _c("bold", "2") + ") Todo en una misma sheet")
+    fmt_idx = ask_int("  Elige [1-2]: ", 1, 2)
+    split_files = (fmt_idx == 1)
 
     if confirm(f"  Generar matriz de validación para {market_name} ({entorno})?", default=True):
         cmd = [sys.executable, "src/generate_validation_matrix.py",

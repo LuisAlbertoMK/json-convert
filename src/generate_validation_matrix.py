@@ -61,6 +61,7 @@ COLS_SINGLE = [
     "Estado",
     "Responsable",
     "Acción Requerida en AEM / Especificación",
+    "Observación / Nota",
 ]
 
 COLS_DUAL = [
@@ -73,6 +74,7 @@ COLS_DUAL = [
     "Estado Producción",
     "Responsable",
     "Acción Requerida en AEM / Especificación",
+    "Observación / Nota",
 ]
 
 DEFAULT_OUTPUT = "matriz-validacion.xlsx"
@@ -333,17 +335,50 @@ def _build_page_name(mapping: dict) -> str:
     return production_url.rstrip("/").split("/")[-1].replace("-", " ").title()
 
 
+def _build_note(param_name: str, actual_str: str | None, entorno: str) -> str:
+    """Genera nota explicativa cuando el valor actual es un fallback del sitio.
+
+    Solo agrega nota cuando el valor real del sitio es "error page" / "errorPage"
+    — indica que la página no tiene digitalData configurado en PROD.
+    """
+    if actual_str is None:
+        return ""
+    actual_lower = str(actual_str).lower()
+    is_error_page = any(
+        kw in actual_lower
+        for kw in ("error page", "errorpage", "error-page")
+    )
+    if not is_error_page:
+        return ""
+    if entorno == "produccion":
+        return (
+            "El sitio de producción no tiene digitalData configurado "
+            "para esta URL. El valor 'error page' es un fallback del servidor."
+        )
+    return (
+        "El sitio no tiene digitalData configurado para esta URL. "
+        "El valor 'error page' es un fallback del servidor."
+    )
+
+
 def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                     historial_prod: str | None, mappings: list,
                     expected_cfg: dict, output_path: str,
                     catalogo: dict | None = None,
                     catalogo_prod: dict | None = None,
                     catalogo_docs: dict | None = None,
-                    skip_orphans: bool = False):
+                    skip_orphans: bool = False,
+                    existing_wb: openpyxl.Workbook | None = None,
+                    sheet_name: str | None = None,
+                    display_url: str | None = None):
     """Genera la matriz de validación Excel.
 
     Args:
         skip_orphans: Si True, omite la sección de entradas huérfanas del historial.
+        existing_wb: Workbook existente para modo split (multi-sheet).
+                     Cuando se provee, NO guarda el archivo (lo hace el caller).
+        sheet_name: Nombre de la hoja dentro del workbook existente.
+        display_url: URL a mostrar en la primera fila de la hoja (split mode).
     """
     market_cfg = expected_cfg.get("markets", {}).get(market, {})
     if not market_cfg:
@@ -353,15 +388,27 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
     is_dual = entorno == "ambas"
     headers = COLS_DUAL if is_dual else COLS_SINGLE
     cols = len(headers)
+    is_split = existing_wb is not None
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = _sanitize_sheet_name(SHEET_NAME)
+    if is_split:
+        wb = existing_wb
+        safe = _sanitize_sheet_name(sheet_name or SHEET_NAME)
+        if safe in wb.sheetnames:
+            idx = 2
+            while f"{safe[:28]}-{idx}" in wb.sheetnames:
+                idx += 1
+            safe = f"{safe[:28]}-{idx}"
+        ws = wb.create_sheet(title=safe)
+        print(f"  [{safe}] Generando matriz...")
+    else:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = _sanitize_sheet_name(SHEET_NAME)
 
     _fill_header(ws, headers)
 
     # ── Column widths ──
-    widths = [40, 28, 45, 45, 12, 14, 14, 18, 55] if is_dual else [40, 28, 45, 45, 12, 18, 55]
+    widths = [40, 28, 45, 45, 12, 14, 14, 18, 55, 55] if is_dual else [40, 28, 45, 45, 12, 18, 55, 55]
     for i, w in enumerate(widths[:cols], 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
@@ -369,6 +416,7 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
     row_count = 0
     warns = 0
     fails = 0
+    first_param_row = True  # para mostrar URL solo en 1ª fila (split)
 
     for mapping in mappings:
         preview_url = mapping.get("preview_url", "")
@@ -422,14 +470,14 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                     prod_source = "catalogo"
                     break
 
-        # Fallback a historial
-        if not actual_page_preview and (is_dual or entorno == "preview"):
+        # Fallback a historial (solo si existe el archivo)
+        if not actual_page_preview and (is_dual or entorno == "preview") and historial_preview:
             dd_preview = find_digitaldata_in_historial(historial_preview, candidate_urls)
             if dd_preview:
                 actual_page_preview = dd_preview.get("page", {})
                 preview_source = "historial"
 
-        if not actual_page_prod and (is_dual or entorno == "produccion"):
+        if not actual_page_prod and (is_dual or entorno == "produccion") and historial_prod:
             dd_prod = find_digitaldata_in_historial(historial_prod, candidate_urls)
             if dd_prod:
                 actual_page_prod = dd_prod.get("page", {})
@@ -473,8 +521,14 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                 expected_val, _, _ = resolve_expected(param, page_key, market_cfg)
                 expected_str = str(expected_val) if expected_val is not None else "—"
 
+                note = _build_note(param, actual_str_prod, "produccion")
+                note_preview = _build_note(param, actual_str_preview, "preview")
+                full_note = note or note_preview or ""
+
+                page_or_url = display_url if (is_split and first_param_row) else ("" if is_split else page_name)
+                first_param_row = False
                 values = [
-                    page_name,
+                    page_or_url,
                     param,
                     actual_str_preview if actual_str_preview else "—",
                     actual_str_prod if actual_str_prod else "—",
@@ -483,6 +537,7 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                     status_prod,
                     "Authoring AEM",
                     action_preview if status_preview != "✅" else action_prod,
+                    full_note,
                 ]
                 _write_row(ws, row, values, status_col=6)
                 if status_preview == "⚠️" or status_prod == "⚠️":
@@ -499,14 +554,18 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                 expected_val, _, _ = resolve_expected(param, page_key, market_cfg)
                 expected_str = str(expected_val) if expected_val is not None else "—"
 
+                note = _build_note(param, actual_str, entorno)
+                page_or_url = display_url if (is_split and first_param_row) else ("" if is_split else page_name)
+                first_param_row = False
                 values = [
-                    page_name,
+                    page_or_url,
                     param,
                     actual_str if actual_str else "—",
                     expected_str,
                     status,
                     "Authoring AEM",
                     action_text,
+                    note,
                 ]
                 _write_row(ws, row, values, status_col=5)
                 if status == "⚠️":
@@ -551,6 +610,7 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                         continue
                     actual_val = actual_page.get(param)
                     actual_str = str(actual_val) if actual_val is not None else None
+                    note = _build_note(param, actual_str, entorno)
                     values = [
                         page_name + " [historial]",
                         param,
@@ -559,6 +619,7 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                         "📋",
                         "—",
                         "Agregar a url-mapping.json y expected.json",
+                        note,
                     ]
                     if is_dual:
                         values = [
@@ -571,6 +632,7 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                             "—",
                             "—",
                             "Agregar a url-mapping.json y expected.json",
+                            note,
                         ]
                     _write_row(ws, row, values)
                     row += 1
@@ -594,8 +656,15 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
     last_col = openpyxl.utils.get_column_letter(cols)
     ws.auto_filter.ref = f"A1:{last_col}{row - 1}"
 
-    wb.save(output_path)
     ok_count = row_count - warns - fails
+
+    if is_split:
+        # El caller se encarga de guardar al final
+        print(f"     {len(mappings)} páginas × {len(PARAMS_ORDER)} parámetros = {row_count} filas")
+        print(f"     ✅ {ok_count}  ⚠️ {warns}  ❌ {fails}")
+        return
+
+    wb.save(output_path)
     print(f"\n[OK] Matriz generada: {output_path}")
     print(f"     {len(mappings)} páginas × {len(PARAMS_ORDER)} parámetros = {row_count} filas")
     print(f"     ✅ {ok_count}  ⚠️ {warns}  ❌ {fails}")
@@ -778,15 +847,21 @@ def main():
     expected_path = args.expected if os.path.isabs(args.expected) else os.path.join(base_dir, args.expected)
 
     # ── Validar archivos según entorno ──
+    # Verificar si hay fuentes alternativas de datos antes de exigir historial
+    has_catalogo_docs = bool(args.catalogo_docs) or os.path.exists("docs/ford-pr-catalogo-valores-pre-preview.xlsx")
+    has_pipeline_catalogo = os.path.exists(
+        os.path.join(base_dir, market, args.entorno, "catalogo-migracion.xlsx")
+    ) if not args.catalogo else os.path.exists(args.catalogo)
+
     if args.entorno in ("preview", "ambas") and not os.path.exists(h_preview):
         print(f"[WARN] No se encuentra historial preview: {h_preview}")
-        if args.entorno == "preview":
+        if args.entorno == "preview" and not has_catalogo_docs and not has_pipeline_catalogo:
             print("  Ejecuta primero una auditoría (opción 2) con --entorno preview")
             sys.exit(1)
 
     if args.entorno in ("produccion", "ambas") and not os.path.exists(h_prod):
         print(f"[WARN] No se encuentra historial produccion: {h_prod}")
-        if args.entorno == "produccion":
+        if args.entorno == "produccion" and not has_catalogo_docs and not has_pipeline_catalogo:
             print("  Ejecuta primero una auditoría (opción 2) con --entorno produccion")
             sys.exit(1)
 
@@ -844,15 +919,26 @@ def main():
     h_prod_actual = h_prod if os.path.exists(h_prod) else None
 
     if args.split:
-        # Modo split: un archivo por página en {market}/split/
+        # Modo split: UN archivo, UNA hoja (sheet) por URL
         split_dir = os.path.join(base_dir, market, "split")
         os.makedirs(split_dir, exist_ok=True)
-        seen_keys: dict[str, int] = {}
+        entorno_name = args.entorno
+        split_path = os.path.join(split_dir, f"matriz-split-{entorno_name}.xlsx")
+        print(f"\n[Split] Generando matriz multi-sheet: {split_path}")
+        split_wb = openpyxl.Workbook()
+        # Eliminar hoja por defecto (la recreamos con la 1ra URL)
+        split_wb.remove(split_wb.active)
+
+        total_ok = 0
+        total_warn = 0
+        total_fail = 0
         for mapping in mappings:
-            safe_name = _safe_filename(mapping.get("page_key", "pagina"), seen_keys)
-            entorno_name = args.entorno
-            split_path = os.path.join(split_dir, f"{entorno_name}-{safe_name}.xlsx")
-            print(f"\n  [{safe_name}] Generando matriz...")
+            sheet_name = _build_page_name(mapping)
+            display_url = mapping.get("production_url") or mapping.get("preview_url", "")
+            page_key = mapping.get("page_key", "")
+            if not page_key:
+                print(f"  [!] Saltando URL sin page_key")
+                continue
             generate_matrix(
                 market=market,
                 entorno=args.entorno,
@@ -865,7 +951,17 @@ def main():
                 catalogo_prod=catalogo_prod,
                 catalogo_docs=catalogo_docs,
                 skip_orphans=True,
+                existing_wb=split_wb,
+                sheet_name=sheet_name,
+                display_url=display_url,
             )
+
+        # Guardar el workbook completo
+        split_wb.save(split_path)
+        print(f"\n[OK] Split generado: {split_path}")
+        print(f"     {len(mappings)} hojas (1 por URL)")
+        # No podemos sumar los contadores porque generate_matrix
+        # los imprime por hoja individual. El resumen está arriba.
     else:
         generate_matrix(
             market=market,

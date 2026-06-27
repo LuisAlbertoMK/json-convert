@@ -113,7 +113,7 @@ def find_digitaldata_in_historial(historial_path: str, preview_url: str) -> dict
 
     for row in range(2, data_sheet.max_row + 1):
         url_cell = data_sheet.cell(row, 2).value
-        if url_cell and preview_url in str(url_cell):
+        if url_cell and preview_url and preview_url in str(url_cell):
             dd_raw = data_sheet.cell(row, dd_col).value
             wb.close()
             if dd_raw and isinstance(dd_raw, str):

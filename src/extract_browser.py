@@ -39,7 +39,6 @@ from json_convert import (
     validate_sheet,
 )
 from json_convert.browser import _shutdown_flag, process_url
-from json_convert.cache import UrlCache
 from json_convert.excel import _auto_row_height
 from json_convert.pipeline import (
     run_pipeline,
@@ -73,14 +72,6 @@ async def amain() -> None:
 
     log_path = _setup_logging(args.verbose, args.log_file)
     print(f"\n  Log: {log_path}")
-
-    # ── Caché de navegación ──
-    cache = UrlCache(ttl=args.cache_ttl) if not args.no_cache else None
-
-    if args.clear_cache and cache:
-        cleared = cache.clear()
-        print(f"\n  Caché limpiada: {cleared} archivo(s) eliminado(s)")
-        return
 
     # ── Fuente de URLs ──
     urls, url_source = _resolve_urls(args)
@@ -149,39 +140,7 @@ async def amain() -> None:
 
         async def _process_one(row: int, url: str) -> dict:
             """Crea page, procesa URL, captura beacons, cierra page.
-            Usa caché si está disponible (--no-cache para desactivar)."""
-            # Verificar caché antes de navegar
-            if cache is not None:
-                cached = cache.get(url)
-                if cached is not None:
-                    # Actualizar row + elapsed_s para reflejar la corrida actual
-                    cached = dict(cached)
-                    cached["row"] = row
-                    cached["_from_cache"] = True
-                    # Si el cache tiene digitaldata_manual, preservarlo
-                    if "digitaldata_manual" not in cached:
-                        cached["digitaldata_manual"] = cached.get("digitaldata")
-                    # Parsear beacons del caché si existen pero no se parsearon antes
-                    _raw = cached.get("raw_beacons", [])
-                    if _raw and not cached.get("aa_parsed"):
-                        _parsed_aa = []
-                        _extra_aa = []
-                        for _b in _raw[:6]:
-                            try:
-                                _p = parse_aa_beacon(_b, cached.get("title", ""))
-                                if _p.get("hit", {}).get("type") in ("pageView", None):
-                                    _parsed_aa.append(_p)
-                                else:
-                                    _extra_aa.append(_p)
-                            except Exception:
-                                continue
-                        if _parsed_aa:
-                            cached["aa_parsed"] = _parsed_aa[0]
-                        if _extra_aa:
-                            cached["extra_beacons"] = _extra_aa
-                    logging.info("Cache hit: %s", url[:80])
-                    return cached
-
+            Siempre navega — sin caché para datos 100% reales."""
             async with semaphore:
                 # Contexto propio por página para evitar "Target closed" en cascada.
                 ctx = await browser.new_context(**context_kwargs)
@@ -235,9 +194,6 @@ async def amain() -> None:
                         result["aa_parsed"] = parsed_aa[0]
                     if extra_aa:
                         result["extra_beacons"] = extra_aa
-                    # Guardar en caché (sin row específico ni elapsed)
-                    if cache is not None:
-                        cache.set(url, result)
                     return result
                 finally:
                     await page.close()
@@ -309,10 +265,6 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--log-file", help="Archivo de log")
     p.add_argument("--verbose", action="store_true", help="Logging debug")
     p.add_argument("--run-clean", action="store_true", help="Forzar clean run")
-    p.add_argument("--no-cache", action="store_true", help="Desactivar caché de navegación")
-    p.add_argument("--cache-ttl", type=int, default=86400,
-                   help="TTL de caché en segundos (default: 86400 = 24h)")
-    p.add_argument("--clear-cache", action="store_true", help="Limpiar caché y salir")
     p.add_argument("--browser", default="firefox", choices=("chromium", "firefox"),
                    help="Browser engine: firefox (default, evita ERR_ABORTED) o chromium (para produccion con Chrome real)")
     return p

@@ -96,7 +96,6 @@ class UrlResult(TypedDict, total=False):
     code: None
     retries_used: int
     error: str
-    _from_cache: bool
 
 
 # ═══════════════════════════════════════════════════════════════════════════
