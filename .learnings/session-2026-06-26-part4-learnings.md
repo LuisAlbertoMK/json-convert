@@ -64,3 +64,23 @@
 - Integrar reporte_auditoria.xlsx en columna nota del split (Fase 3)
 - Re-ejecutar pipeline completo con datos reales
 - Score target: 9.5+
+
+---
+
+## 🔄 Parte 5 — Error Page → URL Auditada
+
+### What
+- Renombrada columna "Error Page" → **"URL Auditada"** al inicio de la matriz
+- Reemplazado `error_flag` (⚠️ Error hardcodeado) por `url_auditada` (URL real: production > preview > display)
+- Eliminada función `_detect_error_page()` (dead code)
+- Huérfanos también ahora muestran `hist_url` real
+
+### Why
+- El usuario quería ver la URL auditada, no un mensaje de error hardcodeado
+
+### Where
+- `src/generate_validation_matrix.py` — COLS_SINGLE, COLS_DUAL, _write_params_row, orphan loop
+
+### Gotchas
+- Split mode: URL solo en primera fila de parámetros (consistente con columna Página/URL)
+

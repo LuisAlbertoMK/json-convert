@@ -54,7 +54,7 @@ PARAMS_ORDER = [
 SHEET_NAME = "Matriz Maestra de Validación"
 
 COLS_SINGLE = [
-    "Error Page",
+    "URL Auditada",
     "Página / URL",
     "Propiedad del Data Layer (page.*)",
     "Valor Actual",
@@ -66,7 +66,7 @@ COLS_SINGLE = [
 ]
 
 COLS_DUAL = [
-    "Error Page",
+    "URL Auditada",
     "Página / URL",
     "Propiedad del Data Layer (page.*)",
     "Valor Actual (Preview)",
@@ -337,21 +337,6 @@ def _build_page_name(mapping: dict) -> str:
     return production_url.rstrip("/").split("/")[-1].replace("-", " ").title()
 
 
-def _detect_error_page(actual_page: dict) -> str:
-    """Revisa si algún parámetro de la página tiene valor 'error page'.
-
-    Retorna indicador: '⚠️ Error' si hay error page, '' si no.
-    """
-    if not actual_page:
-        return ""
-    for val in actual_page.values():
-        if val and isinstance(val, str):
-            val_lower = val.lower()
-            if any(kw in val_lower for kw in ("error page", "errorpage", "error-page")):
-                return "⚠️ Error"
-    return ""
-
-
 def _build_note(param_name: str, actual_str: str | None, entorno: str) -> str:
     """Genera nota explicativa cuando el valor actual es un fallback del sitio.
 
@@ -511,20 +496,8 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
         has_preview = bool(actual_page_preview)
         has_prod = bool(actual_page_prod)
 
-        # Detectar error page por página
-        if is_dual:
-            error_flag_preview = _detect_error_page(actual_page_preview)
-            error_flag_prod = _detect_error_page(actual_page_prod)
-            if error_flag_preview and error_flag_prod:
-                error_flag = "⚠️ Error Ambos"
-            elif error_flag_preview:
-                error_flag = "⚠️ Error Preview"
-            elif error_flag_prod:
-                error_flag = "⚠️ Error Producción"
-            else:
-                error_flag = ""
-        else:
-            error_flag = _detect_error_page(actual_page)
+        # URL auditada: la URL que se está validando (production > preview)
+        url_auditada = production_url or preview_url or display_url
 
 
         if has_preview or has_prod:
@@ -559,9 +532,10 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                 full_note = note or note_preview or ""
 
                 page_or_url = display_url if (is_split and first_param_row) else ("" if is_split else page_name)
+                url_row = url_auditada if (is_split and first_param_row) else ("" if is_split else url_auditada)
                 first_param_row = False
                 values = [
-                    error_flag,
+                    url_row,
                     page_or_url,
                     param,
                     actual_str_preview if actual_str_preview else "—",
@@ -590,9 +564,10 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
 
                 note = _build_note(param, actual_str, entorno)
                 page_or_url = display_url if (is_split and first_param_row) else ("" if is_split else page_name)
+                url_row = url_auditada if (is_split and first_param_row) else ("" if is_split else url_auditada)
                 first_param_row = False
                 values = [
-                    error_flag,
+                    url_row,
                     page_or_url,
                     param,
                     actual_str if actual_str else "—",
@@ -639,7 +614,7 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                 page_name = hist_url.rstrip("/").split("/")[-1].replace("-", " ").title()
                 print(f"  [+] (historial) {page_name}")
                 actual_page = page
-                orphan_error_flag = _detect_error_page(actual_page)
+                orphan_url = hist_url
                 for param in PARAMS_ORDER:
                     param_cfg = market_cfg.get("params", {}).get(param, {})
                     if not param_cfg and param != "hierarchy":
@@ -648,7 +623,7 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                     actual_str = str(actual_val) if actual_val is not None else None
                     note = _build_note(param, actual_str, entorno)
                     values = [
-                        orphan_error_flag,
+                        orphan_url,
                         page_name + " [historial]",
                         param,
                         actual_str if actual_str else "—",
@@ -660,7 +635,7 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                     ]
                     if is_dual:
                         values = [
-                            orphan_error_flag,
+                            orphan_url,
                             page_name + " [historial]",
                             param,
                             actual_str if actual_str else "—",
