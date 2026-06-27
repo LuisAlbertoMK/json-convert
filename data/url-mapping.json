@@ -157,5 +157,15 @@
     "aem_path": "/content/ford/pr/es_pr/vehicles/super-duty-f250",
     "page_key": "super-duty-f250",
     "nombre": "Super Duty F-250"
+  },
+  {
+    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/all-vehicles.html",
+    "page_key": "showroom",
+    "nombre": "All Vehicles (Showroom)"
+  },
+  {
+    "preview_url": "https://wwwac.preview.es.brandpr.ford.com/content/na/ford/es_pr/all-vehicles/crossovers-suvs.html",
+    "page_key": "showroom",
+    "nombre": "Crossovers SUVs (Showroom)"
   }
 ]
