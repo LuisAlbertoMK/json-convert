@@ -31,6 +31,10 @@ DOMAIN_MAP = {
     "www.ford.mx": "MX",
     "ford.com.pr": "PR",
     "ford.mx": "MX",
+    "www.lincoln.mx": "MX",
+    "lincoln.mx": "MX",
+    "www.lincoln.com": "MX",
+    "lincoln.com": "MX",
     "wwwac.preview.es.brandpr.ford.com": "PR",
     "wwwac.preview.brandpr.ford.com": "PR",
 }

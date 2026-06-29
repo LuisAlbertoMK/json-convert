@@ -16,6 +16,8 @@ ALLOWED_HOSTNAME_SUFFIXES = (
     ".brandpr.ford.com",
     ".ford.mx",
     ".ford.com.pr",
+    ".lincoln.mx",
+    ".lincoln.com",
     ".omtrdc.net",
     ".adobedc.net",
     "2o7.net",
