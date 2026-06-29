@@ -1,35 +1,31 @@
 #!/usr/bin/env python3
 """
-update-urls.py — Actualiza data/urls.json pegando URLs.
+update-urls.py -- Actualiza urls.json desde un .txt y dispara extraccion.
 
 Uso:
-    python scripts/update-urls.py
-        → pega TODAS las URLs de una (bloque), Ctrl+Z + Enter para terminar
-        → auto-detecta mercado y genera urls.json
+    python scripts/update-urls.py              -> lee urls.txt (raiz del proyecto)
+    python scripts/update-urls.py mis-urls.txt -> lee archivo especifico
 
-    python scripts/update-urls.py < urls.txt
-        → desde archivo via redirección stdin
+Formato del .txt: una URL por linea (las que no empiecen con http se saltan).
 
-    python scripts/update-urls.py urls.txt
-        → lee URLs de un archivo de texto directamente
-
-Ejemplo:
-    python scripts/update-urls.py
-    Pegá TODAS las URLs (una por línea) y presioná Ctrl+Z + Enter para terminar:
+Ejemplo urls.txt:
     https://www.ford.mx/
     https://www.ford.mx/distribuidores/
-    ^Z
-    Detectado: MX - 2 URLs
-    ¿Guardar? [S/n]: s
-    [OK] urls.json actualizado (2 URLs)
+    https://www.ford.mx/mustang/
+
+Flujo:
+    1. Lee URLs del .txt
+    2. Actualiza data/urls.json (mercado auto-detectado)
+    3. Dispara extraccion con extract_browser.py para cada mercado
 """
 
 import json
 import os
+import subprocess
 import sys
 from urllib.parse import urlparse
 
-# ── Mapeo de dominio → mercado ──
+# -- Mapeo de dominio a mercado --
 DOMAIN_MAP = {
     "www.ford.com.pr": "PR",
     "www.ford.mx": "MX",
@@ -41,6 +37,8 @@ DOMAIN_MAP = {
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 URLS_PATH = os.path.join(BASE_DIR, "data", "urls.json")
+DEFAULT_TXT = os.path.join(BASE_DIR, "urls.txt")
+EXTRACT_SCRIPT = os.path.join(BASE_DIR, "src", "extract_browser.py")
 
 
 def detect_market(url: str) -> str:
@@ -55,28 +53,15 @@ def detect_market(url: str) -> str:
     return "MX"  # default
 
 
-def read_urls_from_stdin() -> list[str]:
-    """Lee URLs desde stdin — pega todo el bloque de una, Ctrl+Z + Enter para terminar."""
-    print("\n  Pegá TODAS las URLs (una por línea) y presioná Ctrl+Z + Enter para terminar:\n")
-    urls = []
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith(("http://", "https://")):
-            urls.append(line)
-        else:
-            print(f"  [!] Se saltea (no es URL válida): {line}")
-    return urls
-
-
 def read_urls_from_file(path: str) -> list[str]:
-    """Lee URLs desde un archivo de texto."""
+    """Lee URLs desde un archivo de texto (una por linea)."""
     urls = []
     with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if line and line.startswith(("http://", "https://")):
+            if not line:
+                continue
+            if line.startswith(("http://", "https://")):
                 urls.append(line)
     return urls
 
@@ -109,25 +94,63 @@ def save_urls(entries: list[dict]) -> None:
     print(f"\n  [OK] {URLS_PATH} actualizado ({len(entries)} URLs)")
 
 
-def main():
-    # Fuente de URLs
-    if len(sys.argv) > 1:
-        file_path = sys.argv[1]
-        if not os.path.exists(file_path):
-            print(f"[ERR] Archivo no encontrado: {file_path}")
-            sys.exit(1)
-        urls = read_urls_from_file(file_path)
-        print(f"\n  Leídas {len(urls)} URLs desde {file_path}")
+def run_extraction(market: str, entries: list[dict]) -> bool:
+    """Ejecuta extract_browser.py para un mercado."""
+    output_dir = os.path.join(BASE_DIR, market, "produccion")
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, "historial.xlsx")
+
+    market_urls = [e for e in entries if e["market"] == market]
+
+    print(f"\n  {'='*50}")
+    print(f"  Iniciando extraccion para {market} ({len(market_urls)} URLs)...")
+    print(f"  {'='*50}")
+
+    cmd = [
+        sys.executable,
+        EXTRACT_SCRIPT,
+        "--urls", URLS_PATH,
+        "--market", market,
+        "--entorno", "produccion",
+        "--output", output_file,
+        "--split-aa",
+        "--workers", "4",
+        "--browser", "firefox",
+    ]
+
+    result = subprocess.run(cmd, cwd=BASE_DIR)
+    if result.returncode == 0:
+        print(f"\n  [OK] Extraccion {market} completada")
+        return True
     else:
-        urls = read_urls_from_stdin()
+        print(f"\n  [ERR] Extraccion {market} fallo (codigo {result.returncode})")
+        return False
 
+
+def main():
+    # -- 1. Leer URLs --
+    if len(sys.argv) > 1:
+        txt_path = sys.argv[1]
+        if not os.path.exists(txt_path):
+            print(f"[ERR] Archivo no encontrado: {txt_path}")
+            sys.exit(1)
+    else:
+        txt_path = DEFAULT_TXT
+        if not os.path.exists(txt_path):
+            print(f"[ERR] Creame primero {txt_path} con una URL por linea")
+            sys.exit(1)
+
+    urls = read_urls_from_file(txt_path)
     if not urls:
-        print("\n  [!] No se ingresaron URLs. Saliendo.")
-        return
+        print(f"\n  [!] No se encontraron URLs validas en {txt_path}")
+        print("     Asegurate que cada linea empiece con http:// o https://")
+        sys.exit(1)
 
+    print(f"\n  [{os.path.basename(txt_path)}] {len(urls)} URLs leidas")
+
+    # -- 2. Construir y guardar urls.json --
     entries = build_entries(urls)
 
-    # Resumen
     markets = {}
     for e in entries:
         m = e["market"]
@@ -139,13 +162,26 @@ def main():
         print(f"    {m}: {c} URLs")
     print(f"  {'='*45}")
 
-    # Confirmar (solo si stdin es interactivo)
-    if sys.stdin.isatty():
-        resp = input("\n  Guardar urls.json? [S/n]: ").strip().lower()
-        if resp not in ("", "s", "si", "y", "yes"):
-            print("  Cancelado.")
-            return
     save_urls(entries)
+
+    # -- 3. Preguntar si extraer --
+    resp = input("\n  Ejecutar extraccion ahora? [S/n]: ").strip().lower()
+    if resp not in ("", "s", "si", "y", "yes"):
+        print("  Ok. Podes correr el menu manualmente despues.")
+        return
+
+    # -- 4. Extraer por cada mercado --
+    ok = True
+    for market in sorted(markets):
+        if not run_extraction(market, entries):
+            ok = False
+
+    if ok:
+        print(f"\n  {'='*45}")
+        print(f"  [OK] TODO COMPLETADO -- {len(entries)} URLs procesadas")
+        print(f"  {'='*45}")
+    else:
+        print(f"\n  [!] Algunas extracciones fallaron -- revisa los logs")
 
 
 if __name__ == "__main__":

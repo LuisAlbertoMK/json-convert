@@ -16,6 +16,7 @@ Thumbs.db
 # Generado
 urls.json
 data/urls.json
+urls.txt
 
 # Pytest cache
 .pytest_cache/
