@@ -108,13 +108,21 @@ THIN_BORDER = Border(
 
 
 def _get_historial_sheet(wb):
-    """Encuentra la hoja de datos en un workbook de historial."""
+    """Encuentra la hoja de datos MÁS RECIENTE en un workbook de historial.
+
+    El historial acumula sheets por fecha (2026-06-29, 2026-06-29_2, ...).
+    Retorna el último sheet de datos (el más reciente), ignorando sheets
+    de control (_control, _vars, Sheet legacy).
+    """
+    candidates = []
     for sn in wb.sheetnames:
         if sn not in ("_control", "_vars", "Sheet"):
-            return wb[sn]
-    if "Sheet" in wb.sheetnames:
-        return wb["Sheet"]
-    return None
+            candidates.append(sn)
+    if not candidates:
+        return None
+    # Tomar el último cronológicamente
+    latest = sorted(candidates)[-1]
+    return wb[latest]
 
 
 def _find_dd_col(ws) -> int:

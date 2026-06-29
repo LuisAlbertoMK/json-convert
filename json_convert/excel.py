@@ -249,10 +249,12 @@ def _has_aa(col_e: object) -> bool:
 
 
 def split_aa_workbooks(wb: Any, audit_date: str, output_dir: str) -> None:
-    """Crea con_aa.xlsx (completo, 8 cols) y sin_aa.xlsx (solo 4 cols basicas).
+    """Crea/actualiza con_aa.xlsx y sin_aa.xlsx con sheets por fecha.
 
     con_aa: URLs que tienen AA o digitalData → mantiene todas las columnas.
     sin_aa: URLs sin AA ni digitalData → solo nombre, URL, digitaldata manual/auto.
+
+    Cada corrida agrega un sheet con la fecha de auditoría (no sobrescribe).
     """
     ws = wb[audit_date]
     con_rows, sin_rows = [], []
@@ -265,13 +267,27 @@ def split_aa_workbooks(wb: Any, audit_date: str, output_dir: str) -> None:
         else:
             sin_rows.append(row)
 
-    SIN_HEADERS = SHEET_HEADERS[:4]  # solo nombre, URL, dd manual, dd auto
+    SIN_HEADERS = SHEET_HEADERS[:4]
 
     for suffix, rows in [("con_aa", con_rows), ("sin_aa", sin_rows)]:
         path = os.path.join(output_dir, f"{suffix}.xlsx")
-        swb = openpyxl.Workbook()
-        swb.remove(swb.active)
-        sws = swb.create_sheet(audit_date)
+
+        # Cargar existente o crear nuevo
+        if os.path.exists(path):
+            swb = openpyxl.load_workbook(path)
+        else:
+            swb = openpyxl.Workbook()
+            swb.remove(swb.active)
+
+        # Crear sheet con fecha; si ya existe, agregar sufijo
+        sheet_name = audit_date
+        if sheet_name in swb.sheetnames:
+            idx = 2
+            while f"{audit_date}_{idx}" in swb.sheetnames:
+                idx += 1
+            sheet_name = f"{audit_date}_{idx}"
+
+        sws = swb.create_sheet(sheet_name)
 
         if suffix == "sin_aa":
             sws.append(SIN_HEADERS)
@@ -280,7 +296,7 @@ def split_aa_workbooks(wb: Any, audit_date: str, output_dir: str) -> None:
                 if col_letter in HEADER_FILLS:
                     sws.cell(1, col_idx).fill = HEADER_FILLS[col_letter]
             for row_num in rows:
-                for col in range(1, 5):  # solo cols 1-4
+                for col in range(1, 5):
                     src = ws.cell(row_num, col)
                     dst = sws.cell(row_num, col)
                     dst.value = src.value
@@ -305,7 +321,7 @@ def split_aa_workbooks(wb: Any, audit_date: str, output_dir: str) -> None:
         _auto_row_height(sws)
         save_workbook(swb, path)
         swb.close()
-        logging.info("Split %s: %d filas -> %s", suffix, len(rows), path)
+        logging.info("Split %s: %d filas -> [%s] %s", suffix, len(rows), sheet_name, path)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -314,7 +330,11 @@ def split_aa_workbooks(wb: Any, audit_date: str, output_dir: str) -> None:
 
 def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
     """Carga o crea workbook con sheets _control + fecha actual.
-    Retorna (wb, ws, audit_date, skipped)."""
+    Retorna (wb, ws, audit_date, skipped).
+
+    Cada corrida agrega un sheet nuevo con la fecha. Si ya existe un sheet
+    con la misma fecha, agrega sufijo _2, _3, etc. (no sobrescribe).
+    """
     if os.path.exists(output_path) and resume:
         wb = openpyxl.load_workbook(output_path)
         audit_date = datetime.now().strftime("%Y-%m-%d")
@@ -329,7 +349,13 @@ def setup_multisheet(output_path: str, urls_source: str, resume: bool) -> tuple:
         wb = openpyxl.load_workbook(output_path)
         audit_date = datetime.now().strftime("%Y-%m-%d")
         if audit_date in wb.sheetnames:
-            del wb[audit_date]
+            # En lugar de borrar, buscar nombre disponible con sufijo
+            idx = 2
+            while f"{audit_date}_{idx}" in wb.sheetnames:
+                idx += 1
+            audit_date = f"{audit_date}_{idx}"
+            logging.info("Sheet %s ya existe, usando %s", 
+                        datetime.now().strftime("%Y-%m-%d"), audit_date)
     else:
         wb = openpyxl.Workbook()
         audit_date = datetime.now().strftime("%Y-%m-%d")
