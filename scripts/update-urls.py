@@ -4,18 +4,21 @@ update-urls.py — Actualiza data/urls.json pegando URLs.
 
 Uso:
     python scripts/update-urls.py
-        → pega URLs (una por línea), termina con línea vacía + Enter
+        → pega TODAS las URLs de una (bloque), Ctrl+Z + Enter para terminar
         → auto-detecta mercado y genera urls.json
 
+    python scripts/update-urls.py < urls.txt
+        → desde archivo via redirección stdin
+
     python scripts/update-urls.py urls.txt
-        → lee URLs de un archivo de texto
+        → lee URLs de un archivo de texto directamente
 
 Ejemplo:
     python scripts/update-urls.py
-    Pegá las URLs (una por línea, línea vacía para terminar):
-    > https://www.ford.mx/
-    > https://www.ford.mx/distribuidores/
-    >
+    Pegá TODAS las URLs (una por línea) y presioná Ctrl+Z + Enter para terminar:
+    https://www.ford.mx/
+    https://www.ford.mx/distribuidores/
+    ^Z
     Detectado: MX - 2 URLs
     ¿Guardar? [S/n]: s
     [OK] urls.json actualizado (2 URLs)
@@ -53,16 +56,13 @@ def detect_market(url: str) -> str:
 
 
 def read_urls_from_stdin() -> list[str]:
-    """Lee URLs desde stdin (una por línea, vacía para terminar)."""
-    print("\n  Pegá las URLs (una por línea, línea vacía + Enter para terminar):\n")
+    """Lee URLs desde stdin — pega todo el bloque de una, Ctrl+Z + Enter para terminar."""
+    print("\n  Pegá TODAS las URLs (una por línea) y presioná Ctrl+Z + Enter para terminar:\n")
     urls = []
-    while True:
-        try:
-            line = input("  > ").strip()
-        except (EOFError, KeyboardInterrupt):
-            break
+    for line in sys.stdin:
+        line = line.strip()
         if not line:
-            break
+            continue
         if line.startswith(("http://", "https://")):
             urls.append(line)
         else:
@@ -139,12 +139,13 @@ def main():
         print(f"    {m}: {c} URLs")
     print(f"  {'='*45}")
 
-    # Confirmar
-    resp = input("\n  Guardar urls.json? [S/n]: ").strip().lower()
-    if resp in ("", "s", "si", "y", "yes"):
-        save_urls(entries)
-    else:
-        print("  Cancelado.")
+    # Confirmar (solo si stdin es interactivo)
+    if sys.stdin.isatty():
+        resp = input("\n  Guardar urls.json? [S/n]: ").strip().lower()
+        if resp not in ("", "s", "si", "y", "yes"):
+            print("  Cancelado.")
+            return
+    save_urls(entries)
 
 
 if __name__ == "__main__":
