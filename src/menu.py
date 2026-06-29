@@ -929,26 +929,18 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
     for env_idx, env in enumerate(entornos_to_run):
         step_n = 3 + env_idx * 2
 
-        # Auditoría
+        # Auditoría — SIEMPRE se ejecuta (el usuario exige datos frescos)
         print()
         print(_c("cyan", f"  [{step_n}] Auditoría ({env})..."))
-        existing_historiales = detect_markets()
         audit_ok = True
 
-        if existing_historiales:
-            print(_c("dim", "    Ya existen historiales."))
-            if confirm("    Usar existentes (saltar auditoría)?", default=True):
-                results.append((f"Auditoria ({env}) saltada", 0))
-            else:
-                audit_ok = _run_audit_for_env(markets_to_run, env, results)
+        if has_urls:
+            audit_ok = _run_audit_for_env(markets_to_run, env, results)
         else:
-            if has_urls:
-                audit_ok = _run_audit_for_env(markets_to_run, env, results)
-            else:
-                rc = run_step([sys.executable, "src/extract_browser.py"] + _browser_args(),
-                              "Ejecutando (modo Excel plano)...", timeout=600)
-                results.append(("Auditoria", rc))
-                audit_ok = (rc == 0)
+            rc = run_step([sys.executable, "src/extract_browser.py"] + _browser_args(),
+                          "Ejecutando (modo Excel plano)...", timeout=600)
+            results.append(("Auditoria", rc))
+            audit_ok = (rc == 0)
 
         if not audit_ok:
             print(_c("red", f"  ⚠ Auditoría ({env}) falló."))
@@ -987,20 +979,8 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
                 f"Match 3‑vías {m}...", timeout=60)
             results.append((f"Match 3‑vías {m}", rc))
 
-    # Catálogo de migración
-    mapping_path = os.path.join(BASE_DIR, "data/url-mapping.json")
-    if os.path.exists(mapping_path) and os.path.exists(os.path.join(BASE_DIR, "data/expected.json")):
-        print()
-        print(_c("cyan", "  Catálogo de migración..."))
-        for m, hpath in post_markets:
-            rc = run_step(
-                [sys.executable, "src/generate_migration_catalog.py",
-                 "--historial", hpath,
-                 "--mapping", "data/url-mapping.json",
-                 "--expected", "data/expected.json",
-                 "--market", m],
-                f"Catálogo {m}...", timeout=60)
-            results.append((f"Catálogo {m}", rc))
+    # (Catálogo de migración removido del pipeline automático)
+    #
 
     # Resultados
     print()

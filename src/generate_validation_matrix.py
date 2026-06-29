@@ -43,6 +43,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from json_convert.utils import load_json
+from urllib.parse import urlparse
 
 # ── Constants ──
 PARAMS_ORDER = [
@@ -126,10 +127,29 @@ def _find_dd_col(ws) -> int:
 
 
 def _urls_match(url_a: str, url_b: str) -> bool:
-    """Compara dos URLs. Retorna True si una contiene a la otra."""
+    """Compara dos URLs por path exacto (no substring).
+
+    Retorna True si comparten el mismo path (ignorando trailing slash).
+    Previene falsos positivos donde '/' matchea TODO o
+    una URL es substring de otra (ej: / vs /camiones/).
+    """
+    from urllib.parse import urlparse
+    if not url_a or not url_b:
+        return False
     a = url_a.lower().rstrip("/")
     b = url_b.lower().rstrip("/")
-    return a in b or b in a
+    if a == b:
+        return True
+    # Comparar paths (mismo netloc + path exacto)
+    try:
+        pa = urlparse(a)
+        pb = urlparse(b)
+        # Mismo netloc y path (ignorando trailing slash)?
+        if pa.netloc == pb.netloc and pa.path.rstrip("/") == pb.path.rstrip("/"):
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _build_historial_index(historial_path: str) -> dict | None:
@@ -209,19 +229,25 @@ def resolve_expected(param_name: str, page_key: str, cfg: dict) -> tuple:
     if rule == "required":
         val = param_cfg.get("mapping", {}).get(page_key, "")
         if not val:
-            return ("", "create", "Sin regla")
+            inferred = _infer_expected(param_name, page_key, cfg)
+            return (inferred, "create",
+                    f"Auto-generado — verificar en expected.json")
         return (val, "create", param_cfg.get("note", "Nuevo parámetro"))
 
     if rule == "mapping":
         val = param_cfg.get("mapping", {}).get(page_key, "")
         if not val:
-            return ("", "create", "Sin regla")
+            inferred = _infer_expected(param_name, page_key, cfg)
+            return (inferred, "warn",
+                    f"Auto-generado — verificar en expected.json")
         return (val, "warn", "Mapear sección")
 
     # pattern (default)
     val = param_cfg.get("patterns", {}).get(page_key, "")
     if not val:
-        return ("", "create", "Sin regla")
+        inferred = _infer_expected(param_name, page_key, cfg)
+        return (inferred, "create",
+                f"Auto-generado desde URL — verificar en expected.json")
     return (val, "warn", param_cfg.get("default_note", "Alinear nomenclatura"))
 
 
@@ -316,6 +342,45 @@ def _write_row(ws, row: int, values: list, status_col: int | None = None):
             target.fill = FILL_WARN
         elif status_val == "❌":
             target.fill = FILL_FAIL
+
+
+def _infer_page_key(url: str) -> str:
+    """Infiere page_key desde una URL.
+
+    Toma el último segmento significativo del path (salta códigos de idioma).
+    Si el path es vacío o raíz, retorna 'home'.
+    """
+    if not url:
+        return "unknown"
+    path = urlparse(url).path.rstrip("/")
+    if not path or path == "/":
+        return "home"
+    segments = [s for s in path.split("/")
+                if s and s not in ("esp", "en", "content", "na",
+                                    "es_pr", "en_pr", "es_mx", "en_mx")]
+    if not segments:
+        return "home"
+    return segments[-1]
+
+def _infer_expected(param_name: str, page_key: str, cfg: dict) -> str:
+    """Auto-genera valor esperado para un page_key que no está en expected.json.
+
+    Usa las reglas del mercado + convenciones:
+      - pattern: {prefix}:{page_key}  (prefix sin colon final)
+      - mapping/required: {page_key}
+      - fixed: valor fijo (no depende de page_key)
+    """
+    param_cfg = cfg.get("params", {}).get(param_name, {})
+    rule = param_cfg.get("rule", "pattern")
+    prefix = cfg.get("prefix", page_key).rstrip(":")
+
+    if rule == "pattern":
+        return f"{prefix}:{page_key}"
+    elif rule in ("mapping", "required"):
+        return page_key
+    elif rule == "fixed":
+        return param_cfg.get("value", "")
+    return page_key
 
 
 def _sanitize_sheet_name(name: str) -> str:
@@ -896,8 +961,34 @@ def main():
     mappings = load_mappings(mapping_path)
 
     if not mappings:
-        print(f"[ERR] No se encontraron mappings en {mapping_path}")
-        sys.exit(1)
+        # Auto-construir mappings desde urls.json
+        urls_path = os.path.join(base_dir, "data", "urls.json")
+        if os.path.exists(urls_path):
+            with open(urls_path, encoding="utf-8") as f:
+                urls_data = json.load(f)
+            for entry in urls_data:
+                url_market = entry.get("market", "").upper()
+                if url_market != market:
+                    continue
+                url = entry.get("url", "")
+                if not url:
+                    continue
+                pk = entry.get("page_key") or _infer_page_key(url)
+                mappings.append({
+                    "page_key": pk,
+                    "production_url": url,
+                    "preview_url": url,
+                    "nombre": pk.replace("-", " ").title(),
+                })
+            if mappings:
+                print(f"[OK] Mappings auto-generados desde urls.json ({len(mappings)} URLs)")
+            else:
+                print(f"[ERR] No hay URLs para mercado '{market}' en urls.json")
+                sys.exit(1)
+        else:
+            print(f"[ERR] No se encontraron mappings en {mapping_path}")
+            print(f"      Y no existe {urls_path} para auto-generar")
+            sys.exit(1)
 
     if market not in expected_cfg.get("markets", {}):
         print(f"[ERR] Mercado '{market}' no encontrado en {expected_path}")

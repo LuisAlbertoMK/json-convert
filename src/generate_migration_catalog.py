@@ -311,11 +311,39 @@ def pp_json(obj: dict) -> str:
 
 
 def generate_catalog(historial_path: str, mapping_path: str,
-                     expected_path: str, market: str, output_path: str):
+                     expected_path: str, market: str, output_path: str,
+                     urls_path: str = "data/urls.json"):
     """Genera el catálogo de migración completo."""
     expected_cfg = load_json(expected_path)
-    mappings = load_json(mapping_path)
     market_cfg = expected_cfg.get("markets", {}).get(market, {})
+    mappings = load_json(mapping_path)
+
+    # Auto-build desde urls.json si mapping está vacío
+    if not mappings:
+        if os.path.exists(urls_path):
+            with open(urls_path, encoding="utf-8") as f:
+                urls_data = json.load(f)
+            from urllib.parse import urlparse
+            for entry in urls_data:
+                url_market = entry.get("market", "").upper()
+                if url_market != market:
+                    continue
+                url = entry.get("url", "")
+                if not url:
+                    continue
+                path = urlparse(url).path.rstrip("/")
+                segments = [s for s in path.split("/")
+                            if s and s not in ("esp", "en", "content", "na",
+                                                "es_pr", "en_pr", "es_mx", "en_mx")]
+                pk = segments[-1] if segments else "home"
+                mappings.append({
+                    "page_key": pk,
+                    "production_url": url,
+                    "preview_url": url,
+                    "nombre": pk.replace("-", " ").title(),
+                })
+            if mappings:
+                print(f"[OK] Mappings auto-generados desde urls.json ({len(mappings)} URLs)")
 
     if not market_cfg:
         print(f"[ERR] Mercado '{market}' no encontrado en {expected_path}")

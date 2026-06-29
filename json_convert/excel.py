@@ -249,9 +249,10 @@ def _has_aa(col_e: object) -> bool:
 
 
 def split_aa_workbooks(wb: Any, audit_date: str, output_dir: str) -> None:
-    """Crea con_aa.xlsx (tiene AA o digitalData) y sin_aa.xlsx (no tiene nada).
+    """Crea con_aa.xlsx (completo, 8 cols) y sin_aa.xlsx (solo 4 cols basicas).
 
-    Ahora considera AMBAS columnas: AA (col E) y digitalData (col D).
+    con_aa: URLs que tienen AA o digitalData → mantiene todas las columnas.
+    sin_aa: URLs sin AA ni digitalData → solo nombre, URL, digitaldata manual/auto.
     """
     ws = wb[audit_date]
     con_rows, sin_rows = [], []
@@ -264,22 +265,41 @@ def split_aa_workbooks(wb: Any, audit_date: str, output_dir: str) -> None:
         else:
             sin_rows.append(row)
 
+    SIN_HEADERS = SHEET_HEADERS[:4]  # solo nombre, URL, dd manual, dd auto
+
     for suffix, rows in [("con_aa", con_rows), ("sin_aa", sin_rows)]:
         path = os.path.join(output_dir, f"{suffix}.xlsx")
         swb = openpyxl.Workbook()
         swb.remove(swb.active)
         sws = swb.create_sheet(audit_date)
-        sws.append(SHEET_HEADERS)
-        for col_letter, fill in HEADER_FILLS.items():
-            col_idx = openpyxl.utils.column_index_from_string(col_letter)
-            sws.cell(1, col_idx).fill = fill
-        for row_num in rows:
-            for col in range(1, 9):
-                src = ws.cell(row_num, col)
-                dst = sws.cell(row_num, col)
-                dst.value = src.value
-                if src.has_style:
-                    dst.fill = copy(src.fill) if src.fill else None
+
+        if suffix == "sin_aa":
+            sws.append(SIN_HEADERS)
+            for col_letter in ("A", "B", "C", "D"):
+                col_idx = openpyxl.utils.column_index_from_string(col_letter)
+                if col_letter in HEADER_FILLS:
+                    sws.cell(1, col_idx).fill = HEADER_FILLS[col_letter]
+            for row_num in rows:
+                for col in range(1, 5):  # solo cols 1-4
+                    src = ws.cell(row_num, col)
+                    dst = sws.cell(row_num, col)
+                    dst.value = src.value
+                    if src.has_style:
+                        dst.fill = copy(src.fill) if src.fill else None
+        else:
+            # con_aa: completo, 8 columnas
+            sws.append(SHEET_HEADERS)
+            for col_letter, fill in HEADER_FILLS.items():
+                col_idx = openpyxl.utils.column_index_from_string(col_letter)
+                sws.cell(1, col_idx).fill = fill
+            for row_num in rows:
+                for col in range(1, 9):
+                    src = ws.cell(row_num, col)
+                    dst = sws.cell(row_num, col)
+                    dst.value = src.value
+                    if src.has_style:
+                        dst.fill = copy(src.fill) if src.fill else None
+
         _set_col_widths(sws)
         apply_data_fills(sws)
         _auto_row_height(sws)

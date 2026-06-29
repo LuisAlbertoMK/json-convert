@@ -125,8 +125,25 @@ echo    Chromium OK
 
 echo.
 echo 4. Verificando Google Chrome (recomendado)...
+
+set CHROME_FOUND=0
+
+REM 4a. Buscar en PATH
 where chrome.exe >nul 2>&1
-if %errorlevel% equ 0 (
+if %errorlevel% equ 0 set CHROME_FOUND=1
+
+REM 4b. Buscar en rutas comunes de instalacion
+if %CHROME_FOUND%==0 (
+    if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" set CHROME_FOUND=1
+)
+if %CHROME_FOUND%==0 (
+    if exist "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" set CHROME_FOUND=1
+)
+if %CHROME_FOUND%==0 (
+    if exist "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe" set CHROME_FOUND=1
+)
+
+if %CHROME_FOUND%==1 (
     echo    Chrome OK
 ) else (
     echo    [AVISO] No se encontro Google Chrome.
