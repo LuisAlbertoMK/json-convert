@@ -81,12 +81,14 @@ async def process_url(
     Devuelve dict con resultados.
     """
     if _shutdown_flag:
-        return {"url": url, "row": row, "error": "Shutdown requested"}
+        return {"url": url, "row": row, "error": "Shutdown requested",
+                "elapsed_s": 0, "retries_used": 0}
 
     start = time.perf_counter()
     err = validate_url(url)
     if err:
-        return {"url": url, "row": row, "error": err}
+        return {"url": url, "row": row, "error": err,
+                "elapsed_s": 0, "retries_used": 0}
 
     last_dd = None
     last_s = None
