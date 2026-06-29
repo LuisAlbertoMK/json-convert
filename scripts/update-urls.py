@@ -56,7 +56,7 @@ def detect_market(url: str) -> str:
 def read_urls_from_file(path: str) -> list[str]:
     """Lee URLs desde un archivo de texto (una por linea)."""
     urls = []
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
             if not line:
