@@ -61,6 +61,10 @@ _scan*.py
 check_*.py
 inspect_*.py
 verify_*.py
+part*.py
+excel_analysis*.py
+S*.txt
+M*.txt
 
 # PDFs (no committed — archivos grandes/binarios)
 docs/*.pdf
