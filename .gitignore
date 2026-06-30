@@ -74,3 +74,6 @@ build/
 **/resumen-catalogo-migracion.*
 **/match-prod-vs-preview.*
 **/backup/
+
+# Output de analizar_nameplate.py (directorios por ticket)
+GTBEMEAPUB-*/
