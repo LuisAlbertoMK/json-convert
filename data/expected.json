@@ -238,6 +238,19 @@
             },
           "default_note": "Alinear nomenclatura al estandar de EUA"
         },
+        "hierarchy": {
+          "label": "HIERARCHY (eVar9)",
+          "rule": "mapping",
+          "mapping": {
+            "bronco": "fpr:vehicle:suv:ford bronco",
+            "bronco-models-base": "fpr:vehicle:suv:ford bronco base",
+            "bronco-models-big-bend": "fpr:vehicle:suv:ford bronco big bend",
+            "bronco-models-outer-banks": "fpr:vehicle:suv:ford bronco outer banks",
+            "bronco-models-badlands": "fpr:vehicle:suv:ford bronco badlands"
+          },
+          "site_value": "vehicle:2025:suv:ford bronco",
+          "note": "Formato: {prefix}:vehicle:{sub}:{model full name} (Marco Garcia)"
+        },
         "siteSection": {
           "label": "SITE SECTION (eVar9 / hierarchy)",
           "rule": "mapping",

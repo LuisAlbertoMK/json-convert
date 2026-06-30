@@ -6,6 +6,7 @@ Uso:
   python scripts/auditar_urls.py                          # Corre las URLs por defecto (Bronco PR)
   python scripts/auditar_urls.py --clean                  # Limpia PR/ antes de empezar
   python scripts/auditar_urls.py --urls mis-urls.json     # Usa lista personalizada
+  python scripts/auditar_urls.py --ticket 42399           # Ticket GTBEMEAPUB para nombrar archivos
 """
 import sys
 if hasattr(sys.stdout, 'reconfigure'):
@@ -105,7 +106,11 @@ def run(cmd, label):
     return result.returncode
 
 
-def auditar_url(url_entry: dict, clean_first: bool = False):
+def _to_pascal(slug: str) -> str:
+    """Convierte slug a PascalCase. Ej: 'big-bend' -> 'BigBend'"""
+    return "".join(word.capitalize() for word in slug.replace("-", " ").replace("_", " ").split())
+
+def auditar_url(url_entry: dict, clean_first: bool = False, ticket: str = ""):
     page_key = url_entry["page_key"]
     nombre = url_entry["nombre"]
     url = url_entry["url"]
@@ -192,6 +197,22 @@ def auditar_url(url_entry: dict, clean_first: bool = False):
         except Exception as e:
             print(f"  [WARN] Error copiando matriz: {e}")
 
+    # ── 7. Generar matriz individual (formato simple — como ejemplos GTBEMEAPUB) ──
+    if ticket:
+        model_name = _to_pascal(slug)
+        simple_name = f"GTBEMEAPUB-{ticket}-PR-ESP-{model_name}.xlsx"
+        simple_path = os.path.join(out_dir, simple_name)
+        run([
+            PYTHON, "src/generate_validation_matrix.py",
+            "--market", "PR",
+            "--entorno", "produccion",
+            "--mapping", url_mapping_path,
+            "--simple",
+            "--output", simple_path,
+        ], f"{nombre} (simple)")
+    else:
+        print("  [--ticket no especificado, omitiendo archivo individual]")
+
     print(f"\n  [OK] {nombre} COMPLETADO -> {out_dir}")
     return True
 
@@ -204,7 +225,10 @@ def main():
                         help="Limpia PR/ antes de empezar")
     parser.add_argument("--urls", type=str, default=None,
                         help="Archivo JSON con lista de URLs a auditar")
+    parser.add_argument("--ticket", type=str, default="",
+                        help="Ticket GTBEMEAPUB para nombrar archivos individuales (ej: 42399)")
     args = parser.parse_args()
+    ticket = args.ticket.strip()
 
     # Cargar URLs (utf-8-sig para tolerar BOM en Windows)
     if args.urls:
@@ -233,7 +257,7 @@ def main():
     ok = 0
     fail = 0
     for entry in urls_list:
-        if auditar_url(entry, clean_first=True):
+        if auditar_url(entry, clean_first=True, ticket=ticket):
             ok += 1
         else:
             fail += 1

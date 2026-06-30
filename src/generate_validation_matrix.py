@@ -66,6 +66,14 @@ COLS_SINGLE = [
     "Observación / Nota",
 ]
 
+COLS_SIMPLE = [
+    "URL Auditada",
+    "Página / URL",
+    "Propiedad del Data Layer (page.*)",
+    "Valor Actual",
+    "Valor Esperado (PR Adaptado)",
+]
+
 COLS_DUAL = [
     "URL Auditada",
     "Página / URL",
@@ -294,6 +302,14 @@ def evaluate_one(param_name: str, actual: str | None, page_key: str,
         return ("✅", "Correcto. Se mantiene el valor adaptado actual.")
 
     # ── No coinciden ──
+    if param_name == "hierarchy":
+        actual_lower = str(actual).lower().strip()
+        if actual_lower in ("error page", "error_page", ""):
+            site_val = cfg.get("params", {}).get("hierarchy", {}).get("site_value", "")
+            if site_val:
+                return ("⚠️", f"Del sitio: '{site_val}' → '{expected_str}'")
+        return ("⚠️", f"Cambiar '{actual}' → '{expected_str}'")
+
     if param_name == "client":
         return ("⚠️", f"Estandarizar a '{expected_str}' (con espacio) en AEM.")
 
@@ -445,7 +461,8 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                     skip_orphans: bool = False,
                     existing_wb: openpyxl.Workbook | None = None,
                     sheet_name: str | None = None,
-                    display_url: str | None = None):
+                    display_url: str | None = None,
+                    simple: bool = False):
     """Genera la matriz de validación Excel.
 
     Args:
@@ -461,7 +478,10 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
         sys.exit(1)
 
     is_dual = entorno == "ambas"
-    headers = COLS_DUAL if is_dual else COLS_SINGLE
+    if simple:
+        headers = COLS_SIMPLE
+    else:
+        headers = COLS_DUAL if is_dual else COLS_SINGLE
     cols = len(headers)
     is_split = existing_wb is not None
 
@@ -478,12 +498,16 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
     else:
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = _sanitize_sheet_name(SHEET_NAME)
+        sheet_title = "Sheet1" if simple else _sanitize_sheet_name(SHEET_NAME)
+        ws.title = sheet_title
 
     _fill_header(ws, headers)
 
     # ── Column widths ──
-    widths = [10, 40, 28, 45, 45, 12, 14, 14, 18, 55, 55] if is_dual else [10, 40, 28, 45, 45, 12, 18, 55, 55]
+    if simple:
+        widths = [10, 40, 28, 45, 45]
+    else:
+        widths = [10, 40, 28, 45, 45, 12, 14, 14, 18, 55, 55] if is_dual else [10, 40, 28, 45, 45, 12, 18, 55, 55]
     for i, w in enumerate(widths[:cols], 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
@@ -630,6 +654,13 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                 actual_val = actual_page.get(param)
                 actual_str = str(actual_val) if actual_val is not None else None
 
+                # Para hierarchy: si el scraper da "error page" pero sabemos
+                # el valor real del sitio (site_value), usarlo en vez de "error page"
+                if param == "hierarchy" and actual_str and actual_str.lower().strip() in ("error page", "error_page", ""):
+                    site_val = market_cfg.get("params", {}).get("hierarchy", {}).get("site_value", "")
+                    if site_val:
+                        actual_str = site_val
+
                 status, action_text = evaluate_one(param, actual_str, page_key, market_cfg)
 
                 expected_val, _, _ = resolve_expected(param, page_key, market_cfg)
@@ -639,22 +670,32 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                 page_or_url = display_url if (is_split and first_param_row) else ("" if is_split else page_name)
                 url_row = url_auditada if (is_split and first_param_row) else ("" if is_split else url_auditada)
                 first_param_row = False
-                values = [
-                    url_row,
-                    page_or_url,
-                    param,
-                    actual_str if actual_str else "—",
-                    expected_str,
-                    status,
-                    "Authoring AEM",
-                    action_text,
-                    note,
-                ]
-                _write_row(ws, row, values, status_col=6)
-                if status == "⚠️":
-                    warns += 1
-                elif status == "❌":
-                    fails += 1
+                if simple:
+                    values = [
+                        url_row,
+                        page_or_url,
+                        param,
+                        actual_str if actual_str else "—",
+                        expected_str,
+                    ]
+                    _write_row(ws, row, values)
+                else:
+                    values = [
+                        url_row,
+                        page_or_url,
+                        param,
+                        actual_str if actual_str else "—",
+                        expected_str,
+                        status,
+                        "Authoring AEM",
+                        action_text,
+                        note,
+                    ]
+                    _write_row(ws, row, values, status_col=6)
+                    if status == "⚠️":
+                        warns += 1
+                    elif status == "❌":
+                        fails += 1
 
             row += 1
             row_count += 1
@@ -664,7 +705,7 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
 
     # ── Historial entries (URLs con digitalData pero sin entry en mapping) ──
     historial_path = historial_preview if entorno in ("preview", "ambas") else historial_prod
-    if not skip_orphans and historial_path:
+    if not simple and not skip_orphans and historial_path:
         index = _build_historial_index(historial_path)
         if index:
             # Cuales URLs del mapping ya fueron cubiertas?
@@ -728,6 +769,15 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
             if orphan_count:
                 print(f"     ({orphan_count} páginas adicionales del historial sin mapping)")
 
+    ok_count = row_count - warns - fails
+
+    if simple:
+        # Modo simple: sin firma, sin freeze, sin auto-filter
+        wb.save(output_path)
+        print(f"     {len(mappings)} páginas × {len(PARAMS_ORDER)} parámetros = {row_count} filas")
+        print(f"     ✅ {ok_count}  ⚠️ {warns}  ❌ {fails}")
+        return
+
     # ── Fila de firma ──
     row += 1
     extra = "" if not skip_orphans else " (split)"
@@ -741,8 +791,6 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
     ws.freeze_panes = "A2"
     last_col = openpyxl.utils.get_column_letter(cols)
     ws.auto_filter.ref = f"A1:{last_col}{row - 1}"
-
-    ok_count = row_count - warns - fails
 
     if is_split:
         # El caller se encarga de guardar al final
@@ -913,6 +961,8 @@ def main():
                         help="Ruta de salida (default: {market}/matriz-validacion-{entorno}.xlsx)")
     parser.add_argument("--split", action="store_true",
                         help="Genera un archivo por página en {market}/split/")
+    parser.add_argument("--simple", action="store_true",
+                        help="Formato simple: 5 columnas, Sheet1, sin estilos (formato ejemplo GTBEMEAPUB)")
     args = parser.parse_args()
 
     # ── Resolver paths ──
@@ -1030,7 +1080,38 @@ def main():
     h_preview_actual = h_preview if os.path.exists(h_preview) else None
     h_prod_actual = h_prod if os.path.exists(h_prod) else None
 
-    if args.split:
+    if args.simple:
+        # Modo simple: UN archivo individual por URL (formato ejemplos GTBEMEAPUB)
+        simple_dir = os.path.join(base_dir, market, "simple")
+        os.makedirs(simple_dir, exist_ok=True)
+        for mapping in mappings:
+            display_url = mapping.get("production_url") or mapping.get("preview_url", "")
+            page_key = mapping.get("page_key", "")
+            if not page_key:
+                print(f"  [!] Saltando URL sin page_key")
+                continue
+            # Si se especifico --output y solo hay 1 mapping, usarlo directamente
+            if args.output and len(mappings) == 1:
+                simple_path = args.output
+            else:
+                page_name = _build_page_name(mapping).replace(" ", "")
+                simple_path = os.path.join(simple_dir, f"{page_name}.xlsx")
+            generate_matrix(
+                market=market,
+                entorno=args.entorno,
+                historial_preview=h_preview_actual,
+                historial_prod=h_prod_actual,
+                mappings=[mapping],
+                expected_cfg=expected_cfg,
+                output_path=simple_path,
+                catalogo=catalogo,
+                catalogo_prod=catalogo_prod,
+                catalogo_docs=catalogo_docs,
+                skip_orphans=True,
+                simple=True,
+                display_url=display_url,
+            )
+    elif args.split:
         # Modo split: UN archivo, UNA hoja (sheet) por URL
         split_dir = os.path.join(base_dir, market, "split")
         os.makedirs(split_dir, exist_ok=True)
