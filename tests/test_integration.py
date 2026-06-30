@@ -365,7 +365,7 @@ class TestValidationPipeline(unittest.TestCase):
         """URL válida → sin error → sin clasificación."""
         urls = [
             "https://www.ford.com/es/mustang",
-            "https://brandpr.ford.com/preview/mach-e",
+            "https://brandpr.ford.com/preview/mach-e"
         ]
         for url in urls:
             err = validate_url(url)
