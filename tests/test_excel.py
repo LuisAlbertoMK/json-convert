@@ -254,7 +254,7 @@ class TestSplitAAWorkbooks(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
 
     def test_split_with_aa_and_without(self):
-        """Filas con AA → con_aa.xlsx, sin AA → sin_aa.xlsx."""
+        """Filas con AA → con_aa.xlsx, sin_aa.xlsx con TODAS las filas (solo 4 cols)."""
         wb = _make_ws([
             ["url1", "t1", "", '{"page":"ok"}', "", '{"solution":"a"}', "", ""],  # tiene aa+dd
             ["url2", "t2", "", "", "", "", "", ""],  # no tiene nada
@@ -272,16 +272,23 @@ class TestSplitAAWorkbooks(unittest.TestCase):
         con_ws = con_wb[ws.title]
         self.assertEqual(con_ws.cell(2, 1).value, "url1")
         self.assertEqual(con_ws.cell(2, 6).value, '{"solution":"a"}')
+        # url2 NO esta en con_aa (no tiene datos)
+        self.assertIsNone(con_ws.cell(3, 1).value)
         con_wb.close()
 
-        # sin_aa: rows copied preservando número original (row 3)
+        # sin_aa: TODAS las filas, solo primeras 4 columnas
         sin_wb = openpyxl.load_workbook(sin_path)
         sin_ws = sin_wb[ws.title]
-        self.assertEqual(sin_ws.cell(3, 1).value, "url2")
+        self.assertEqual(sin_ws.max_row, 3)     # header + 2 datos
+        self.assertEqual(sin_ws.max_column, 4)   # solo 4 cols
+        self.assertEqual(sin_ws.cell(2, 1).value, "url1")   # url1 tambien
+        self.assertEqual(sin_ws.cell(3, 1).value, "url2")   # url2 tambien
+        # col 5+ debe estar vacia
+        self.assertIsNone(sin_ws.cell(2, 5).value)
         sin_wb.close()
 
     def test_split_all_con_aa(self):
-        """Todas las filas tienen AA → con_aa.xlsx solo."""
+        """Todas las filas tienen AA → sin_aa tiene copia ligera de todas."""
         wb = _make_ws([
             ["url1", "t1", "", "", "", '{"solution":"a"}', "", ""],
             ["url2", "t2", "", "", "", '{"solution":"b"}', "", ""],
@@ -295,15 +302,16 @@ class TestSplitAAWorkbooks(unittest.TestCase):
         self.assertTrue(os.path.exists(sin_path))
 
         con_wb = openpyxl.load_workbook(con_path)
-        self.assertEqual(con_wb.active.max_row, 3)
+        self.assertEqual(con_wb.active.max_row, 3)       # header + 2 filas
         con_wb.close()
 
         sin_wb = openpyxl.load_workbook(sin_path)
-        self.assertEqual(sin_wb.active.max_row, 1)  # solo header
+        self.assertEqual(sin_wb.active.max_row, 3)       # header + 2 filas (todas)
+        self.assertEqual(sin_wb.active.max_column, 4)    # solo 4 cols
         sin_wb.close()
 
     def test_split_only_dd_no_aa(self):
-        """Solo digitalData (col D) sin AA → con_aa igual."""
+        """Solo digitalData (col D) sin AA → con_aa igual, sin_aa con copia."""
         wb = _make_ws([
             ["url1", "t1", "", '{"page":"ok"}', "", "", "", ""],
         ])
@@ -314,6 +322,12 @@ class TestSplitAAWorkbooks(unittest.TestCase):
         con_wb = openpyxl.load_workbook(con_path)
         self.assertEqual(con_wb.active.cell(2, 4).value, '{"page":"ok"}')
         con_wb.close()
+        # sin_aa tambien tiene la fila (solo 4 cols)
+        sin_path = os.path.join(self.tmpdir, "sin_aa.xlsx")
+        sin_wb = openpyxl.load_workbook(sin_path)
+        self.assertEqual(sin_wb.active.max_row, 2)
+        self.assertEqual(sin_wb.active.cell(2, 1).value, "url1")
+        sin_wb.close()
 
     def test_split_empty_sheet(self):
         """Sheet sin filas de datos → ambos archivos con solo header."""

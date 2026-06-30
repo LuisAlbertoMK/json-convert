@@ -251,25 +251,25 @@ def _has_aa(col_e: object) -> bool:
 def split_aa_workbooks(wb: Any, audit_date: str, output_dir: str) -> None:
     """Crea/actualiza con_aa.xlsx y sin_aa.xlsx con sheets por fecha.
 
-    con_aa: URLs que tienen AA o digitalData → mantiene todas las columnas.
-    sin_aa: URLs sin AA ni digitalData → solo nombre, URL, digitaldata manual/auto.
+    con_aa: URLs con datos AA o digitalData → 8 columnas completas.
+    sin_aa: TODAS las URLs → solo nombre, URL, digitaldata manual/auto (4 cols).
+            Es una copia ligera de con_aa con las primeras 4 columnas.
 
     Cada corrida agrega un sheet con la fecha de auditoría (no sobrescribe).
     """
     ws = wb[audit_date]
-    con_rows, sin_rows = [], []
+    con_rows, all_rows = [], []
     for row in range(2, ws.max_row + 1):
         col_d = ws.cell(row, 4).value  # digitaldata (automatica)
         col_f = ws.cell(row, 6).value  # AA analytics (automatico)
         has_data = _has_aa(col_f) or _has_digitaldata(col_d)
         if has_data:
             con_rows.append(row)
-        else:
-            sin_rows.append(row)
+        all_rows.append(row)
 
     SIN_HEADERS = SHEET_HEADERS[:4]
 
-    for suffix, rows in [("con_aa", con_rows), ("sin_aa", sin_rows)]:
+    for suffix, rows in [("con_aa", con_rows), ("sin_aa", all_rows)]:
         path = os.path.join(output_dir, f"{suffix}.xlsx")
 
         # Cargar existente o crear nuevo
