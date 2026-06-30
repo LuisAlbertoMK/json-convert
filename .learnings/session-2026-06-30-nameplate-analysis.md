@@ -69,12 +69,36 @@ El archivo contiene 7 hojas (6 visibles, 1 oculta):
 
 ## 📁 Archivos relevantes
 - `scripts/analizar_nameplate.py` — Pipeline de análisis
-- `GTBEMEAPUB-42479/GTBEMEAPUB-42479-PR-Bronco.csv` — Output CSV (887 filas)
-- `GTBEMEAPUB-42479/GTBEMEAPUB-42479-PR-Bronco-summary.json` — Resumen con calidad
+- `scripts/corregir_nameplate.py` — Corrector de los 20 quality flags
+- `docs/FPR_MYCO_Nameplate_Bronco_CORREGIDO.xlsx` — Excel con 20 fixes aplicados
+- `GTBEMEAPUB-42479/GTBEMEAPUB-42479-PR-Bronco.xlsx` — Output con formato original
+
+---
+
+## 🔧 Correcciones Aplicadas (20 fixes)
+
+### Fix 1 (9x): Labels de colores incorrectos
+- Sheets Big Bend, Outer Banks, Badlands: módulos Color 2/3/4 decían "Version Base - Color X"
+- Fix: "Version Big Bend/Outer Banks/Badlands - Color X"
+- Filas: 47, 51, 55 en cada sheet
+
+### Fix 2 (2x): Títulos incorrectos en Badlands
+- Row 39 Title: "Bronco® Base" → "Bronco® Badlands®"
+- Row 40 Copy: "Con la pickup Ford Bronco® Base..." → "Con la pickup Ford Bronco® Badlands®..."
+
+### Fix 3 (1x): Contador #REF!
+- Version Base row 102: fórmula rota `=LEN(D102)` → valor estático 975
+
+### Fix 4 (8x): Colores duplicados
+- Color 8 y 9 aparecían 2 veces en cada sheet de versión
+- Segundo set renumbered: Color 8→10, Color 9→11
+
+### Lecciones
+- Doble pasada openpyxl: detectar con data_only=True, fijar con data_only=False
+- Fórmulas #REF! deben reemplazarse con valores estáticos
 
 ---
 
 ## ✅ Próximos pasos
 - Integrar al menú principal del pipeline (`menu.py`)
-- Agregar flag para incluir/ocultar hoja Expedition
-- Agregar flag para output en Excel (multi-sheet como el original)
+- Analizar otros Excel del proyecto (LN, FV, etc.)
