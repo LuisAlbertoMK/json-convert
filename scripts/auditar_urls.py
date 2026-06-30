@@ -26,6 +26,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PR_DIR = os.path.join(ROOT, "PR")
 PROD_DIR = os.path.join(PR_DIR, "produccion")
 TICKETS_DIR = os.path.join(PR_DIR, "tickets")
+TEMP_DIR = os.path.join(ROOT, "data", ".tmp")  # archivos temporales unicos por URL
 PYTHON = sys.executable
 
 # ── URLs por defecto: Bronco PR ──
@@ -66,7 +67,20 @@ DEFAULT_URLS = [
 def write_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    # Verificar que se escribio correctamente
+    if not os.path.exists(path):
+        print(f"  [ERR] No se pudo escribir {path}")
+        return False
+    with open(path, "r", encoding="utf-8-sig") as f:
+        try:
+            loaded = json.load(f)
+            if loaded != data:
+                print(f"  [WARN] {os.path.relpath(path, ROOT)} escrito pero contenido no coincide")
+        except json.JSONDecodeError:
+            print(f"  [ERR] {os.path.relpath(path, ROOT)} escrito pero JSON invalido")
+            return False
     print(f"  [JSON] {os.path.relpath(path, ROOT)}")
+    return True
 
 
 def run(cmd, label):
@@ -104,14 +118,17 @@ def auditar_url(url_entry: dict, clean_first: bool = False):
     print(f"  OUTPUT: {out_dir}")
     print(f"{'='*60}")
 
-    # ── 1. Preparar archivos de config ──
-    write_json(os.path.join(ROOT, "data/url-mapping.json"), [{
+    # ── 1. Preparar archivos de config (archivos UNICOS por URL para evitar race conditions) ──
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    url_mapping_path = os.path.join(TEMP_DIR, f"{slug}_url-mapping.json")
+    urls_path = os.path.join(TEMP_DIR, f"{slug}_urls.json")
+    write_json(url_mapping_path, [{
         "page_key": page_key,
         "production_url": url,
         "preview_url": url,
         "nombre": nombre,
     }])
-    write_json(os.path.join(ROOT, "data/urls.json"), [{
+    write_json(urls_path, [{
         "url": url,
         "market": "PR",
         "entorno": "produccion",
@@ -126,7 +143,7 @@ def auditar_url(url_entry: dict, clean_first: bool = False):
     # ── 3. Auditoria con browser ──
     ret = run([
         PYTHON, "src/extract_browser.py",
-        "--urls", "data/urls.json",
+        "--urls", urls_path,
         "--market", "PR",
         "--entorno", "produccion",
         "--split-aa", "--progress",
@@ -141,25 +158,39 @@ def auditar_url(url_entry: dict, clean_first: bool = False):
     run([
         PYTHON, "src/extract_aa.py",
         "--input", "PR/produccion/historial.xlsx",
-        "--urls", "data/urls.json",
+        "--urls", urls_path,
     ], f"{nombre} (AA)")
 
-    # ── 5. Generar matriz ──
+    # ── 5. Generar matriz (usando mapping TEMPORAL, no el global) ──
     run([
         PYTHON, "src/generate_validation_matrix.py",
         "--market", "PR",
         "--entorno", "produccion",
+        "--mapping", url_mapping_path,
     ], f"{nombre} (matriz)")
 
-    # ── 6. Copiar outputs ──
+    # ── 6. Copiar outputs (con verificacion) ──
     os.makedirs(out_dir, exist_ok=True)
+    if not os.path.exists(out_dir):
+        print(f"  [ERR] No se pudo crear {out_dir}")
+        return False
     for fname in ["con_aa.xlsx", "sin_aa.xlsx", "historial.xlsx"]:
         src = os.path.join(PROD_DIR, fname)
         if os.path.exists(src):
-            shutil.copy2(src, os.path.join(out_dir, fname))
+            dst = os.path.join(out_dir, fname)
+            try:
+                shutil.copy2(src, dst)
+                if not os.path.exists(dst):
+                    print(f"  [WARN] No se pudo copiar {fname} a {out_dir}")
+            except Exception as e:
+                print(f"  [WARN] Error copiando {fname}: {e}")
     src_matriz = os.path.join(PR_DIR, "matriz-validacion-produccion.xlsx")
     if os.path.exists(src_matriz):
-        shutil.copy2(src_matriz, os.path.join(out_dir, "matriz-validacion-produccion.xlsx"))
+        dst_matriz = os.path.join(out_dir, "matriz-validacion-produccion.xlsx")
+        try:
+            shutil.copy2(src_matriz, dst_matriz)
+        except Exception as e:
+            print(f"  [WARN] Error copiando matriz: {e}")
 
     print(f"\n  [OK] {nombre} COMPLETADO -> {out_dir}")
     return True
@@ -175,9 +206,9 @@ def main():
                         help="Archivo JSON con lista de URLs a auditar")
     args = parser.parse_args()
 
-    # Cargar URLs
+    # Cargar URLs (utf-8-sig para tolerar BOM en Windows)
     if args.urls:
-        with open(args.urls, encoding="utf-8") as f:
+        with open(args.urls, encoding="utf-8-sig") as f:
             urls_list = json.load(f)
     else:
         urls_list = DEFAULT_URLS
@@ -187,13 +218,16 @@ def main():
     print(f"  {len(urls_list)} URLs a procesar")
     print(f"{'='*60}")
 
-    # Limpiar si se pide
+    # Limpiar si se pide (tolerante a archivos bloqueados en Windows)
+    def _on_rm_error(func, path, exc_info):
+        print(f"  [WARN] No se pudo eliminar (en uso): {os.path.relpath(path, ROOT)}")
     if args.clean:
-        for d in [PROD_DIR, TICKETS_DIR]:
+        for d in [PROD_DIR, TICKETS_DIR, TEMP_DIR]:
             if os.path.exists(d):
-                shutil.rmtree(d)
+                shutil.rmtree(d, onexc=_on_rm_error)
         os.makedirs(PROD_DIR, exist_ok=True)
         os.makedirs(TICKETS_DIR, exist_ok=True)
+    os.makedirs(TEMP_DIR, exist_ok=True)
 
     # Auditar cada URL
     ok = 0
@@ -203,6 +237,10 @@ def main():
             ok += 1
         else:
             fail += 1
+
+    # Limpiar archivos temporales
+    if os.path.exists(TEMP_DIR):
+        shutil.rmtree(TEMP_DIR)
 
     print(f"\n{'='*60}")
     print(f"  PIPELINE COMPLETADO: {ok} OK, {fail} errores")

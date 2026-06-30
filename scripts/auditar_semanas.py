@@ -1,10 +1,12 @@
 """
 auditar_semanas.py — Pipeline de auditoría por semanas.
 Cada semana recibe un grupo de URLs, se auditan juntas por mercado+entorno,
-y se guardan en {mercado}/semanas/{nombre_semana}/.
+y se guardan en {mercado}/semanas/{nombre_semana}/{entorno}/.
 
 Uso:
-  python scripts/auditar_semanas.py data/semanas.json
+  python scripts/auditar_semanas.py <archivo>
+  python scripts/auditar_semanas.py <archivo> --weeks 1,3,5
+  python scripts/auditar_semanas.py <archivo> --weeks 3-7 --no-matrix
 
 Formato entrada:
   [
@@ -18,11 +20,11 @@ Formato entrada:
   }
 
 Output por (mercado, semana):
-  {mercado}/semanas/{nombre_semana}/
+  {mercado}/semanas/{nombre_semana}/{entorno}/
     con_aa.xlsx              ← páginas CON beacon AA
     sin_aa.xlsx              ← páginas SIN beacon AA
-    matriz-validacion.xlsx   ← matriz comparativa
-  (historial.xlsx se elimina — no se requiere)
+    historial.xlsx           ← raw audit data (para matriz)
+    matriz-validacion-{entorno}.xlsx   ← matriz comparativa
 """
 import sys
 if hasattr(sys.stdout, 'reconfigure'):
@@ -61,6 +63,27 @@ def _entorno(url: str) -> str:
     return 'preview' if 'preview' in url.lower() else 'produccion'
 
 
+def _infer_page_key(url: str) -> str:
+    """Infiere page_key de la URL — mismo algoritmo que generate_validation_matrix.py."""
+    if not url:
+        return "unknown"
+    path = urlparse(url).path.rstrip("/")
+    if not path or path == "/":
+        return "home"
+    segments = [s for s in path.split("/")
+                if s and s not in ("esp", "en", "content", "na",
+                                    "es_pr", "en_pr", "es_mx", "en_mx")]
+    if not segments:
+        return "home"
+    return segments[-1]
+
+
+def _nombre_desde_url(url: str) -> str:
+    """Convierte el último segmento de la URL a un nombre legible."""
+    pk = _infer_page_key(url)
+    return pk.replace("-", " ").title()
+
+
 def _run(cmd: list[str], label: str = "") -> int:
     """Ejecuta comando, muestra líneas relevantes del stdout."""
     desc = " ".join(cmd[-3:]) if len(cmd) > 3 else " ".join(cmd[-2:])
@@ -95,7 +118,7 @@ def _cargar_semanas(path: str) -> list[dict]:
 
 # ── Core ──
 
-def procesar_semana(semana: dict) -> tuple[int, int]:
+def procesar_semana(semana: dict, no_matrix: bool = False) -> tuple[int, int]:
     """Procesa una semana. Retorna (grupos_ok, grupos_err)."""
     nombre = semana["nombre_semana"]
     urls = semana["urls"]
@@ -114,33 +137,34 @@ def procesar_semana(semana: dict) -> tuple[int, int]:
     err_total = 0
 
     for (mercado, entorno), grupo in grupos.items():
-        semana_dir = ROOT / mercado / "semanas" / nombre
+        semana_dir = ROOT / mercado / "semanas" / nombre / entorno
         semana_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"\n{'='*55}")
         print(f"  {nombre} | {mercado}/{entorno} | {len(grupo)} URLs")
-        print(f"  Output: {mercado}/semanas/{nombre}/")
+        print(f"  Output: {mercado}/semanas/{nombre}/{entorno}/")
         print(f"{'='*55}")
 
-        # ── Preparar data files ──
-        mapping = [
-            {
-                "page_key": f"p{i}",
-                "production_url": url,
-                "preview_url": url,
-                "nombre": f"URL {i+1}",
-            }
-            for i, url in enumerate(grupo)
-        ]
+        # ── Preparar urls.json (lo necesita extract_browser) ──
         urls_data = [
             {"url": url, "market": mercado, "entorno": entorno, "tipo": entorno}
             for url in grupo
         ]
-
-        json.dump(mapping, open(ROOT / "data" / "url-mapping.json", "w", encoding="utf-8"),
-                  indent=2, ensure_ascii=False)
         json.dump(urls_data, open(ROOT / "data" / "urls.json", "w", encoding="utf-8"),
                   indent=2, ensure_ascii=False)
+
+        # ── Preparar url-mapping.json (lo necesita generate_validation_matrix) ──
+        mapping = [
+            {
+                "page_key": _infer_page_key(url),
+                "production_url": url,
+                "preview_url": url,
+                "nombre": _nombre_desde_url(url),
+            }
+            for url in grupo
+        ]
+        # Se escribe JUSTO antes de la matriz, no antes del browser,
+        # para no pisar datos si el browser falla
 
         # ── 1. extract_browser ──
         historial_path = semana_dir / "historial.xlsx"
@@ -163,27 +187,33 @@ def procesar_semana(semana: dict) -> tuple[int, int]:
                 historial_path.unlink()
             continue
 
-        # ── 2. generate_validation_matrix ──
-        matriz_path = semana_dir / "matriz-validacion.xlsx"
-        _run([
-            PYTHON, "src/generate_validation_matrix.py",
-            "--market", mercado,
-            "--entorno", entorno,
-            "--historial-produccion", str(historial_path),
-            "--mapping", str(ROOT / "data" / "url-mapping.json"),
-            "--output", str(matriz_path),
-        ], f"Matriz {nombre}/{mercado}")
+        # ── 2. generate_validation_matrix (opcional) ──
+        if no_matrix:
+            print(f"    [SKIP] Matriz saltada (--no-matrix)")
+            matriz_path = None
+        else:
+            # Escribir mapping justo antes de la matriz
+            json.dump(mapping, open(ROOT / "data" / "url-mapping.json", "w", encoding="utf-8"),
+                      indent=2, ensure_ascii=False)
+            matriz_path = semana_dir / f"matriz-validacion-{entorno}.xlsx"
+            _run([
+                PYTHON, "src/generate_validation_matrix.py",
+                "--market", mercado,
+                "--entorno", entorno,
+                "--historial-produccion", str(historial_path),
+                "--mapping", str(ROOT / "data" / "url-mapping.json"),
+                "--output", str(matriz_path),
+            ], f"Matriz {nombre}/{mercado}")
 
-        # ── 3. Eliminar historial (no requerido) ──
-        if historial_path.exists():
-            historial_path.unlink()
-            print(f"    [LIMPIO] historial.xlsx eliminado (no requerido)")
-
-        # ── 4. Verificar outputs ──
+        # ── 3. Verificar outputs ──
         con_aa = semana_dir / "con_aa.xlsx"
         sin_aa = semana_dir / "sin_aa.xlsx"
+        historial_out = semana_dir / "historial.xlsx"
 
-        faltantes = [f.name for f in [con_aa, sin_aa, matriz_path] if not f.exists()]
+        esperados = [con_aa, sin_aa, historial_out]
+        if matriz_path:
+            esperados.append(matriz_path)
+        faltantes = [f.name for f in esperados if not f.exists()]
         if faltantes:
             print(f"\n  [WARN] Archivos no generados en {nombre}/{mercado}: {', '.join(faltantes)}")
             err_total += 1
@@ -196,22 +226,54 @@ def procesar_semana(semana: dict) -> tuple[int, int]:
 
 # ── Main ──
 
+def _filtrar_semanas(semanas: list[dict], weeks_arg: str | None) -> list[dict]:
+    """Filtra semanas segun --weeks.
+
+    Formatos aceptados:
+      "1,3,5"  → semanas 1, 3, 5 (1-based index en el array)
+      "3-7"    → rango
+      "" / None → todas
+    """
+    if not weeks_arg:
+        return semanas
+
+    indices: set[int] = set()
+    for part in weeks_arg.split(","):
+        part = part.strip()
+        if "-" in part:
+            a, b = part.split("-", 1)
+            indices.update(range(int(a.strip()) - 1, int(b.strip())))
+        else:
+            indices.add(int(part) - 1)
+
+    result = [s for i, s in enumerate(semanas) if i in indices]
+    omitidas = len(semanas) - len(result)
+    if omitidas:
+        print(f"  (filtro --weeks: {omitidas} semanas omitidas)")
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Pipeline de auditoría individual por semana"
     )
     parser.add_argument("input", help="Archivo JSON con semanas y URLs")
+    parser.add_argument("--weeks", help="Semanas a procesar: 1,3,5 / 3-7 / 1,3-5")
+    parser.add_argument("--no-matrix", action="store_true",
+                        help="Saltar generación de matriz (solo browser audit)")
     args = parser.parse_args()
 
     if not os.path.exists(args.input):
         print(f"[ERR] Archivo no encontrado: {args.input}")
         sys.exit(1)
 
-    semanas = _cargar_semanas(args.input)
+    semanas = _filtrar_semanas(_cargar_semanas(args.input), args.weeks)
 
     print(f"\n{'='*55}")
     print(f"  PIPELINE DE AUDITORÍA POR SEMANAS")
     print(f"  {len(semanas)} semanas, {sum(len(s['urls']) for s in semanas)} URLs totales")
+    if args.no_matrix:
+        print(f"  Modo: solo auditoria (sin matriz)")
     print(f"{'='*55}")
 
     t0 = time.time()
@@ -219,7 +281,7 @@ def main():
     total_err = 0
 
     for semana in semanas:
-        ok, err = procesar_semana(semana)
+        ok, err = procesar_semana(semana, no_matrix=args.no_matrix)
         total_ok += ok
         total_err += err
 
@@ -228,6 +290,8 @@ def main():
     print(f"  PIPELINE COMPLETADO en {elapsed}s")
     print(f"  {total_ok} grupos OK, {total_err} errores")
     print(f"  Revisa: */semanas/*/")
+    if args.weeks and total_err > 0:
+        print(f"  Reintenta fallidos: --weeks ...")
     print(f"{'='*55}")
 
 

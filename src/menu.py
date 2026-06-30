@@ -1055,7 +1055,7 @@ def show_menu() -> int:
     print("  " + _c("bold", "4") + ") " + _c("green", "[T]") + "  Ejecutar tests       pytest")
     print("  " + _c("bold", "5") + ") " + _c("magenta", "[D]") + "  Match prod vs preview  comparar prometido vs entregado")
     print("  " + _c("bold", "6") + ") " + _c("green", "[V]") + "  Matriz validación     generate_validation_matrix.py")
-    print("  " + _c("bold", "7") + ") " + _c("cyan", "[N]") + "  Auditoría individual  auditar_urls.py → PR/tickets/")
+    print("  " + _c("bold", "7") + ") " + _c("cyan", "[N]") + "  Análisis → Matriz authoring  auditar_urls.py")
     print("  " + _c("bold", "8") + ") " + _c("magenta", "[S]") + "  Auditoría por semanas auditar_semanas.py")
     print()
     separator("-", 55)
@@ -1101,9 +1101,22 @@ def op_auditar_semanas() -> None:
             c_print("red", "  [ERR] Archivo no encontrado")
             return
 
+    # Preguntar semanas
+    print()
+    raw = input("  Semanas a procesar [Enter=todas, ej: 1,3,5 o 3-7]: ").strip()
+    weeks_arg = f"--weeks {raw}" if raw else ""
+
+    # Preguntar matriz
+    gen_matriz = confirm("  Generar matriz de validacion", default=True)
+    no_matrix_arg = "--no-matrix" if not gen_matriz else ""
+
     header("AUDITORIA POR SEMANAS")
-    rc = run_step([sys.executable, "scripts/auditar_semanas.py", json_path],
-                  "auditar_semanas", cwd=str(BASE_DIR))
+    cmd = [sys.executable, "scripts/auditar_semanas.py", json_path]
+    if weeks_arg:
+        cmd.extend(weeks_arg.split())
+    if no_matrix_arg:
+        cmd.append(no_matrix_arg)
+    rc = run_step(cmd, "auditar_semanas", cwd=str(BASE_DIR))
     if rc == 0:
         c_print("green", "\n  [OK] Pipeline completado. Revisa */semanas/*/")
     else:
