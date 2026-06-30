@@ -1051,21 +1051,63 @@ def show_menu() -> int:
     print()
     print("  " + _c("bold", "1") + ") " + _c("cyan", "[!] TODO EN UNO") + "        pipeline completo")
     print("  " + _c("bold", "2") + ") " + _c("green", ">") + "  Solo auditoria       extract_browser.py")
-    print("  " + _c("bold", "3") + ") " + _c("yellow", "*") + "  Solo post-procesar   extract_aa.py")
-    print("  " + _c("bold", "4") + ") " + _c("magenta", "[R]") + "  Solo reporte fallos  audit_report.py")
-    print("  " + _c("bold", "5") + ") " + _c("yellow", "[C]") + "  Solo limpieza        run.ps1")
-    print("  " + _c("bold", "6") + ") " + _c("blue", "[V]") + "  Ver resultados       abrir Excel")
-    print("  " + _c("bold", "7") + ") " + _c("magenta", "[M]") + "  Catalogo migracion   generate_migration_catalog.py")
-    print("  " + _c("bold", "8") + ") " + _c("green", "[T]") + "  Ejecutar tests       pytest")
-    print("  " + _c("bold", "9") + ") " + _c("magenta", "[D]") + " Match prod vs preview  comparar prometido vs entregado")
-    print("  " + _c("bold", "10") + ") " + _c("blue", "[S]") + "  Ver resumen catálogo   abrir .html")
-    print("  " + _c("bold", "11") + ") " + _c("green", "[V]") + "  Matriz validación     generate_validation_matrix.py")
+    print("  " + _c("bold", "3") + ") " + _c("magenta", "[R]") + "  Solo reporte fallos  audit_report.py")
+    print("  " + _c("bold", "4") + ") " + _c("green", "[T]") + "  Ejecutar tests       pytest")
+    print("  " + _c("bold", "5") + ") " + _c("magenta", "[D]") + "  Match prod vs preview  comparar prometido vs entregado")
+    print("  " + _c("bold", "6") + ") " + _c("green", "[V]") + "  Matriz validación     generate_validation_matrix.py")
+    print("  " + _c("bold", "7") + ") " + _c("cyan", "[N]") + "  Auditoría individual  auditar_urls.py → PR/tickets/")
+    print("  " + _c("bold", "8") + ") " + _c("magenta", "[S]") + "  Auditoría por semanas auditar_semanas.py")
     print()
     separator("-", 55)
     print("  " + _c("dim", "0") + ") " + _c("dim", "x  Salir"))
     separator("=", 55)
 
-    return ask_int("  Opcion [0-11]: ", 0, 11)
+    return ask_int("  Opcion [0-8]: ", 0, 8)
+
+
+def op_auditar_urls() -> None:
+    """Opcion 7: Pipeline de auditoria individual por URL -> PR/tickets/."""
+    header("AUDITORIA INDIVIDUAL - auditar_urls.py")
+    # El script ya limpia con --clean
+    rc = run_step([sys.executable, "scripts/auditar_urls.py", "--clean"],
+                  "auditar_urls", cwd=str(BASE_DIR))
+    if rc == 0:
+        c_print("green", "\n  [OK] Pipeline completado. Revisa PR/tickets/")
+    else:
+        c_print("red", f"\n  [ERR] Pipeline fallo (exit code {rc})")
+
+
+def op_auditar_semanas() -> None:
+    """Opcion 8: Pipeline de auditoria por semanas."""
+    # Detectar archivos disponibles
+    posibles = ["SEMANAS_MX.json", "SEMANAS_PR.json"]
+    existentes = [f for f in posibles if os.path.exists(os.path.join(BASE_DIR, f))]
+    default = os.path.join(BASE_DIR, existentes[0]) if existentes else ""
+
+    print()
+    if len(existentes) > 1:
+        print("  Archivos disponibles:")
+        for i, f in enumerate(existentes, 1):
+            print(f"    {i}. {f}")
+        idx = ask_int("  Selecciona [1-" + str(len(existentes)) + "]: ", 1, len(existentes), default=1)
+        json_path = os.path.join(BASE_DIR, existentes[idx - 1])
+    elif existentes:
+        raw = input(f"  Archivo JSON [{existentes[0]}]: ").strip()
+        json_path = os.path.join(BASE_DIR, raw or existentes[0])
+    else:
+        raw = input("  Ruta del archivo JSON con semanas: ").strip()
+        json_path = os.path.join(BASE_DIR, raw) if raw else ""
+        if not json_path or not os.path.exists(json_path):
+            c_print("red", "  [ERR] Archivo no encontrado")
+            return
+
+    header("AUDITORIA POR SEMANAS")
+    rc = run_step([sys.executable, "scripts/auditar_semanas.py", json_path],
+                  "auditar_semanas", cwd=str(BASE_DIR))
+    if rc == 0:
+        c_print("green", "\n  [OK] Pipeline completado. Revisa */semanas/*/")
+    else:
+        c_print("red", f"\n  [ERR] Pipeline fallo (exit code {rc})")
 
 
 def run_option(opt: int, non_interactive: bool = False) -> bool:
@@ -1078,23 +1120,17 @@ def run_option(opt: int, non_interactive: bool = False) -> bool:
     elif opt == 2:
         op_auditar(non_interactive=non_interactive)
     elif opt == 3:
-        op_postprocesar(non_interactive=non_interactive)
-    elif opt == 4:
         op_reporte(non_interactive=non_interactive)
-    elif opt == 5:
-        op_limpieza()
-    elif opt == 6:
-        op_ver_resultados()
-    elif opt == 7:
-        op_catalogo(non_interactive=non_interactive)
-    elif opt == 8:
+    elif opt == 4:
         op_tests()
-    elif opt == 9:
+    elif opt == 5:
         op_match()
-    elif opt == 10:
-        op_ver_resumen()
-    elif opt == 11:
+    elif opt == 6:
         op_validacion()
+    elif opt == 7:
+        op_auditar_urls()
+    elif opt == 8:
+        op_auditar_semanas()
     elif opt == 0:
         print()
         c_print("green", "  Hasta luego!")
@@ -1115,7 +1151,7 @@ def run_option(opt: int, non_interactive: bool = False) -> bool:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Panel de control json-convert")
     parser.add_argument("--run", type=str,
-                        help="Ejecutar opcion directa: numero 1-11, 0, o 'auto'")
+                        help="Ejecutar opcion directa: numero 1-8, 0, o 'auto'")
     args = parser.parse_args()
 
     BASE_DIR = Path(__file__).resolve().parent.parent
@@ -1136,12 +1172,12 @@ if __name__ == "__main__":
 
     # Modo directo --run
     if args.run:
-        opt_map = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
-                   "8": 8, "9": 9, "10": 10, "11": 11, "0": 0, "auto": 1}
+        opt_map = {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5,
+                   "6": 6, "7": 7, "8": 8, "0": 0, "auto": 1}
         opt = opt_map.get(args.run, -1)
         if opt < 0:
             print(_c("red", "[ERROR] Opcion invalida: " + args.run))
-            print("  Valores validos: 1-11, 0, 'auto'")
+            print("  Valores validos: 1-8, 0, 'auto'")
             sys.exit(1)
 
         # Modo no-interactivo: respuestas automaticas
