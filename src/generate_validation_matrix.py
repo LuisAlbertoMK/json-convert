@@ -247,7 +247,7 @@ def resolve_expected(param_name: str, page_key: str, cfg: dict) -> tuple:
         if not val:
             inferred = _infer_expected(param_name, page_key, cfg)
             return (inferred, "create",
-                    f"Auto-generado — verificar en expected.json")
+                    f"⚠️ NO DEFINIDO en expected.json — agregar entrada para '{page_key}'")
         return (val, "create", param_cfg.get("note", "Nuevo parámetro"))
 
     if rule == "mapping":
@@ -255,7 +255,7 @@ def resolve_expected(param_name: str, page_key: str, cfg: dict) -> tuple:
         if not val:
             inferred = _infer_expected(param_name, page_key, cfg)
             return (inferred, "warn",
-                    f"Auto-generado — verificar en expected.json")
+                    f"⚠️ NO DEFINIDO en expected.json — agregar mapping para '{page_key}'")
         return (val, "warn", "Mapear sección")
 
     # pattern (default)
@@ -263,7 +263,7 @@ def resolve_expected(param_name: str, page_key: str, cfg: dict) -> tuple:
     if not val:
         inferred = _infer_expected(param_name, page_key, cfg)
         return (inferred, "create",
-                f"Auto-generado desde URL — verificar en expected.json")
+                f"⚠️ NO DEFINIDO en expected.json — agregar pattern para '{page_key}'")
     return (val, "warn", param_cfg.get("default_note", "Alinear nomenclatura"))
 
 
@@ -386,24 +386,15 @@ def _infer_page_key(url: str) -> str:
     return segments[-1]
 
 def _infer_expected(param_name: str, page_key: str, cfg: dict) -> str:
-    """Auto-genera valor esperado para un page_key que no está en expected.json.
+    """Valor esperado para page_key NO definido en expected.json.
 
-    Usa las reglas del mercado + convenciones:
-      - pattern: {prefix}:{page_key}  (prefix sin colon final)
-      - mapping/required: {page_key}
-      - fixed: valor fijo (no depende de page_key)
+    ANTES inventaba valores como `fpr:{page_key}` — eso GENERABA DATA FALSA
+    que parecía legítima en la matriz. Ahora retorna un marcador CLARO
+    para que el usuario agregue manualmente el valor real.
+
+    Ver: _validate_expected_coverage() para detección temprana.
     """
-    param_cfg = cfg.get("params", {}).get(param_name, {})
-    rule = param_cfg.get("rule", "pattern")
-    prefix = cfg.get("prefix", page_key).rstrip(":")
-
-    if rule == "pattern":
-        return f"{prefix}:{page_key}"
-    elif rule in ("mapping", "required"):
-        return page_key
-    elif rule == "fixed":
-        return param_cfg.get("value", "")
-    return page_key
+    return "⚠️ SIN DEFINIR — agregar a expected.json"
 
 
 def _sanitize_sheet_name(name: str) -> str:
@@ -1164,6 +1155,20 @@ def main():
     # ── Cargar datos ──
     expected_cfg = load_json(expected_path)
     mappings = load_mappings(mapping_path)
+
+    # ── Pre-validación: todas las page_keys existen en expected ──
+    if mappings and market in expected_cfg.get("markets", {}):
+        mercado_exp = expected_cfg["markets"][market].get("expected", {})
+        if mercado_exp:
+            ausentes = [m["page_key"] for m in mappings
+                        if m.get("page_key") and m["page_key"] not in mercado_exp]
+            if ausentes:
+                print(f"\n{'='*60}")
+                print(f"  [WARN] {len(ausentes)} page_keys SIN definir en expected.json:")
+                for pk in sorted(ausentes):
+                    print(f"    ⚠️  {pk}")
+                print(f"  Se marcarán como '⚠️ SIN DEFINIR' en la matriz")
+                print(f"{'='*60}\n")
 
     if not mappings:
         # Auto-construir mappings desde urls.json

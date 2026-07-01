@@ -145,15 +145,16 @@ def procesar_semana(semana: dict, no_matrix: bool = False) -> tuple[int, int]:
         print(f"  Output: {mercado}/semanas/{nombre}/{entorno}/")
         print(f"{'='*55}")
 
-        # ── Preparar urls.json (lo necesita extract_browser) ──
+        # ── Preparar urls.json TEMPORAL (no tocar data/urls.json global) ──
         urls_data = [
             {"url": url, "market": mercado, "entorno": entorno, "tipo": entorno}
             for url in grupo
         ]
-        json.dump(urls_data, open(ROOT / "data" / "urls.json", "w", encoding="utf-8"),
+        urls_temp = semana_dir / ".urls.json"
+        json.dump(urls_data, open(urls_temp, "w", encoding="utf-8"),
                   indent=2, ensure_ascii=False)
 
-        # ── Preparar url-mapping.json (lo necesita generate_validation_matrix) ──
+        # ── Preparar url-mapping.json TEMPORAL (no tocar data/url-mapping.json global) ──
         mapping = [
             {
                 "page_key": _infer_page_key(url),
@@ -163,14 +164,14 @@ def procesar_semana(semana: dict, no_matrix: bool = False) -> tuple[int, int]:
             }
             for url in grupo
         ]
-        # Se escribe JUSTO antes de la matriz, no antes del browser,
-        # para no pisar datos si el browser falla
+        mapping_temp = semana_dir / ".url-mapping.json"
+        # Solo escribir JUSTO antes de la matriz, no antes del browser
 
         # ── 1. extract_browser ──
         historial_path = semana_dir / "historial.xlsx"
         ret = _run([
             PYTHON, "src/extract_browser.py",
-            "--urls", str(ROOT / "data" / "urls.json"),
+            "--urls", str(urls_temp),
             "--market", mercado,
             "--entorno", entorno,
             "--output", str(historial_path),
@@ -192,8 +193,8 @@ def procesar_semana(semana: dict, no_matrix: bool = False) -> tuple[int, int]:
             print(f"    [SKIP] Matriz saltada (--no-matrix)")
             matriz_path = None
         else:
-            # Escribir mapping justo antes de la matriz
-            json.dump(mapping, open(ROOT / "data" / "url-mapping.json", "w", encoding="utf-8"),
+            # Escribir mapping temporal justo antes de la matriz
+            json.dump(mapping, open(mapping_temp, "w", encoding="utf-8"),
                       indent=2, ensure_ascii=False)
             matriz_path = semana_dir / f"matriz-validacion-{entorno}.xlsx"
             _run([
@@ -201,7 +202,7 @@ def procesar_semana(semana: dict, no_matrix: bool = False) -> tuple[int, int]:
                 "--market", mercado,
                 "--entorno", entorno,
                 "--historial-produccion", str(historial_path),
-                "--mapping", str(ROOT / "data" / "url-mapping.json"),
+                "--mapping", str(mapping_temp),
                 "--output", str(matriz_path),
             ], f"Matriz {nombre}/{mercado}")
 
