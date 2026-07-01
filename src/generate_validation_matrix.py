@@ -302,13 +302,12 @@ def evaluate_one(param_name: str, actual: str | None, page_key: str,
         return ("✅", "Correcto. Se mantiene el valor adaptado actual.")
 
     # ── No coinciden ──
-    if param_name == "hierarchy":
-        actual_lower = str(actual).lower().strip()
-        if actual_lower in ("error page", "error_page", ""):
-            site_val = cfg.get("params", {}).get("hierarchy", {}).get("site_value", "")
-            if site_val:
-                return ("⚠️", f"Del sitio: '{site_val}' → '{expected_str}'")
-        return ("⚠️", f"Cambiar '{actual}' → '{expected_str}'")
+    actual_lower = str(actual).lower().strip() if actual else ""
+    if actual_lower in ("error page", "error_page", "error-page", "errorpage", ""):
+        site_val = cfg.get("params", {}).get(param_name, {}).get("site_value", "")
+        if site_val:
+            return ("⚠️", f"Del sitio: '{site_val}' → '{expected_str}'")
+    return ("⚠️", f"Cambiar '{actual}' → '{expected_str}'")
 
     if param_name == "client":
         return ("⚠️", f"Estandarizar a '{expected_str}' (con espacio) en AEM.")
@@ -452,6 +451,407 @@ def _build_note(param_name: str, actual_str: str | None, entorno: str) -> str:
     )
 
 
+# ════════════════════════════════════════════
+#  HELPERS (extraídas de generate_matrix)
+# ════════════════════════════════════════════
+
+
+def _setup_workbook_sheet(
+    existing_wb: openpyxl.Workbook | None,
+    sheet_name: str | None,
+    headers: list[str],
+    simple: bool,
+) -> tuple:
+    """Crea o reusa un workbook y su hoja activa.
+
+    Modo normal: crea workbook nuevo + hoja.
+    Modo split: crea una hoja adicional en el workbook existente.
+
+    Returns:
+        (wb, ws) — el workbook y la hoja lista para escribir.
+    """
+    if existing_wb:
+        wb = existing_wb
+        safe = _sanitize_sheet_name(sheet_name or SHEET_NAME)
+        if safe in wb.sheetnames:
+            idx = 2
+            while f"{safe[:28]}-{idx}" in wb.sheetnames:
+                idx += 1
+            safe = f"{safe[:28]}-{idx}"
+        ws = wb.create_sheet(title=safe)
+        print(f"  [{safe}] Generando matriz...")
+    else:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        sheet_title = "Sheet1" if simple else _sanitize_sheet_name(SHEET_NAME)
+        ws.title = sheet_title
+
+    _fill_header(ws, headers)
+    return wb, ws
+
+
+def _set_column_widths(ws, headers: list[str], is_dual: bool, simple: bool):
+    """Define anchos de columna según el modo."""
+    cols = len(headers)
+    if simple:
+        widths = [10, 40, 28, 45, 45]
+    else:
+        widths = (
+            [10, 40, 28, 45, 45, 12, 14, 14, 18, 55, 55]
+            if is_dual
+            else [10, 40, 28, 45, 45, 12, 18, 55, 55]
+        )
+    for i, w in enumerate(widths[:cols], 1):
+        col_letter = openpyxl.utils.get_column_letter(i)
+        ws.column_dimensions[col_letter].width = w
+
+
+def _get_page_data(
+    mapping: dict,
+    entorno: str,
+    catalogo_docs: dict | None,
+    catalogo: dict | None,
+    catalogo_prod: dict | None,
+    historial_preview: str | None,
+    historial_prod: str | None,
+    display_url: str | None,
+) -> dict:
+    """Obtiene datos actuales de una página desde 3 fuentes con prioridad.
+
+    Orden de prioridad: catalogo_docs > catalogo pipeline > historial.
+    Respeta la división preview/producción según entorno.
+
+    Returns:
+        dict con: preview_data, prod_data, preview_source, prod_source,
+        url_auditada, page_name, page_key, has_preview, has_prod.
+    """
+    is_dual = entorno == "ambas"
+    preview_url = mapping.get("preview_url", "")
+    production_url = mapping.get("production_url", preview_url)
+    page_key = mapping.get("page_key", "")
+    page_name = _build_page_name(mapping)
+
+    candidate_urls = [u for u in (preview_url, production_url) if u]
+    actual_page_preview: dict = {}
+    actual_page_prod: dict = {}
+    preview_source = None
+    prod_source = None
+
+    # 1. Catalogo docs (match exacto)
+    if is_dual or entorno == "preview":
+        for cu in candidate_urls:
+            cdata = _catalog_lookup(catalogo_docs or {}, cu, exact_only=True)
+            if cdata:
+                actual_page_preview = cdata
+                preview_source = "catalogo_docs"
+                break
+    if is_dual or entorno == "produccion":
+        for cu in candidate_urls:
+            cdata = _catalog_lookup(catalogo_docs or {}, cu, exact_only=True)
+            if cdata:
+                actual_page_prod = cdata
+                prod_source = "catalogo_docs"
+                break
+
+    # 2. Catalogo pipeline (fallback)
+    if not actual_page_preview and (is_dual or entorno == "preview"):
+        for cu in candidate_urls:
+            cdata = _catalog_lookup(catalogo or {}, cu)
+            if cdata:
+                actual_page_preview = cdata
+                preview_source = "catalogo"
+                break
+    if not actual_page_prod and (is_dual or entorno == "produccion"):
+        for cu in candidate_urls:
+            cdata = _catalog_lookup(catalogo_prod or catalogo or {}, cu)
+            if cdata:
+                actual_page_prod = cdata
+                prod_source = "catalogo"
+                break
+
+    # 3. Historial (último fallback)
+    if not actual_page_preview and (is_dual or entorno == "preview") and historial_preview:
+        dd_preview = find_digitaldata_in_historial(historial_preview, candidate_urls)
+        if dd_preview:
+            actual_page_preview = dd_preview.get("page", {})
+            preview_source = "historial"
+    if not actual_page_prod and (is_dual or entorno == "produccion") and historial_prod:
+        dd_prod = find_digitaldata_in_historial(historial_prod, candidate_urls)
+        if dd_prod:
+            actual_page_prod = dd_prod.get("page", {})
+            prod_source = "historial"
+
+    has_preview = bool(actual_page_preview)
+    has_prod = bool(actual_page_prod)
+    url_auditada = production_url or preview_url or (display_url or "")
+
+    if has_preview or has_prod:
+        src = preview_source or prod_source or ""
+        print(f"  [+] {page_name} ({src})")
+    else:
+        print(f"  [!] Sin datos: {page_name}")
+
+    return {
+        "preview_data": actual_page_preview,
+        "prod_data": actual_page_prod,
+        "preview_source": preview_source,
+        "prod_source": prod_source,
+        "url_auditada": url_auditada,
+        "page_name": page_name,
+        "page_key": page_key,
+        "has_preview": has_preview,
+        "has_prod": has_prod,
+    }
+
+
+def _write_page_rows(
+    ws, start_row: int, page_data: dict,
+    market_cfg: dict, is_dual: bool, is_split: bool,
+    first_param_row: bool, entorno: str,
+    display_url: str | None = None,
+    simple: bool = False,
+) -> tuple:
+    """Escribe las filas de parámetros para una página en la hoja.
+
+    Returns:
+        (next_row, row_count, warns, fails, first_param_row).
+    """
+    preview_data = page_data["preview_data"]
+    prod_data = page_data["prod_data"]
+    url_auditada = page_data["url_auditada"]
+    page_name = page_data["page_name"]
+    page_key = page_data["page_key"]
+
+    if is_dual:
+        actual_page_preview = preview_data
+        actual_page_prod = prod_data
+    else:
+        actual_page = preview_data if entorno == "preview" else prod_data
+
+    row = start_row
+    row_count = 0
+    warns = 0
+    fails = 0
+    fp_row = first_param_row
+
+    for param in PARAMS_ORDER:
+        param_cfg = market_cfg.get("params", {}).get(param, {})
+        if not param_cfg and param != "hierarchy":
+            continue
+
+        if is_dual:
+            # Modalidad dual: Preview vs Producción lado a lado
+            actual_val_preview = actual_page_preview.get(param)
+            actual_val_prod = actual_page_prod.get(param)
+
+            actual_str_preview = str(actual_val_preview) if actual_val_preview is not None else None
+            actual_str_prod = str(actual_val_prod) if actual_val_prod is not None else None
+
+            status_preview, action_preview = evaluate_one(param, actual_str_preview, page_key, market_cfg)
+            status_prod, action_prod = evaluate_one(param, actual_str_prod, page_key, market_cfg)
+
+            expected_val, _, _ = resolve_expected(param, page_key, market_cfg)
+            expected_str = str(expected_val) if expected_val is not None else "\u2014"
+
+            note = _build_note(param, actual_str_prod, "produccion")
+            note_preview = _build_note(param, actual_str_preview, "preview")
+            full_note = note or note_preview or ""
+
+            page_or_url = display_url if (is_split and fp_row) else ("" if is_split else page_name)
+            url_row = url_auditada if (is_split and fp_row) else ("" if is_split else url_auditada)
+            fp_row = False
+            values = [
+                url_row,
+                page_or_url,
+                param,
+                actual_str_preview if actual_str_preview else "\u2014",
+                actual_str_prod if actual_str_prod else "\u2014",
+                expected_str,
+                status_preview,
+                status_prod,
+                "Authoring AEM",
+                action_preview if status_preview != "\u2705" else action_prod,
+                full_note,
+            ]
+            _write_row(ws, row, values, status_col=7)
+            if status_preview == "\u26a0\ufe0f" or status_prod == "\u26a0\ufe0f":
+                warns += 1
+            if status_preview == "\u274c" or status_prod == "\u274c":
+                fails += 1
+        else:
+            # Modalidad single: un entorno
+            actual_val = actual_page.get(param)
+            actual_str = str(actual_val) if actual_val is not None else None
+
+            # Si el scraper da "error page" pero sabemos el valor real
+            # del sitio (site_value), usarlo en vez de "error page"
+            if actual_str and actual_str.lower().strip() in ("error page", "error_page", "error-page", "errorpage", ""):
+                site_val = market_cfg.get("params", {}).get(param, {}).get("site_value", "")
+                if site_val:
+                    actual_str = site_val
+                else:
+                    actual_str = "\u2014"
+
+            status, action_text = evaluate_one(param, actual_str, page_key, market_cfg)
+
+            expected_val, _, _ = resolve_expected(param, page_key, market_cfg)
+            expected_str = str(expected_val) if expected_val is not None else "\u2014"
+
+            note = _build_note(param, actual_str, entorno)
+            page_or_url = display_url if (is_split and fp_row) else ("" if is_split else page_name)
+            url_row = url_auditada if (is_split and fp_row) else ("" if is_split else url_auditada)
+            fp_row = False
+            if simple:
+                values = [
+                    url_row,
+                    page_or_url,
+                    param,
+                    actual_str if actual_str else "\u2014",
+                    expected_str,
+                ]
+                _write_row(ws, row, values)
+            else:
+                values = [
+                    url_row,
+                    page_or_url,
+                    param,
+                    actual_str if actual_str else "\u2014",
+                    expected_str,
+                    status,
+                    "Authoring AEM",
+                    action_text,
+                    note,
+                ]
+                _write_row(ws, row, values, status_col=6)
+                if status == "\u26a0\ufe0f":
+                    warns += 1
+                elif status == "\u274c":
+                    fails += 1
+
+        row += 1
+        row_count += 1
+
+    return row, row_count, warns, fails, fp_row
+
+
+def _get_headers(is_dual: bool, simple: bool) -> tuple[list[str], int]:
+    """Resuelve headers y cantidad de columnas según modo."""
+    if simple:
+        headers = COLS_SIMPLE
+    else:
+        headers = COLS_DUAL if is_dual else COLS_SINGLE
+    return headers, len(headers)
+
+
+def _write_orphan_rows(
+    ws, start_row: int,
+    historial_path: str | None, market_cfg: dict,
+    entorno: str, is_dual: bool, mappings: list,
+) -> tuple:
+    """Procesa entradas del historial que no tienen mapping (huérfanas).
+
+    Returns: (next_row, row_count).
+    """
+    if not historial_path:
+        return start_row, 0
+
+    index = _build_historial_index(historial_path)
+    if not index:
+        return start_row, 0
+
+    # URLs del mapping ya cubiertas
+    covered = set()
+    for m in mappings:
+        for u in (m.get("preview_url", ""), m.get("production_url", "")):
+            if u:
+                covered.add(u.lower().rstrip("/"))
+
+    row = start_row
+    row_count = 0
+    orphan_count = 0
+
+    for hist_url, data in sorted(index.items()):
+        is_covered = any(cu in hist_url or hist_url in cu for cu in covered)
+        if is_covered:
+            continue
+        page = data.get("page", {})
+        has_data = any(page.get(p) for p in PARAMS_ORDER if page.get(p))
+        if not has_data:
+            continue
+
+        orphan_count += 1
+        page_name = hist_url.rstrip("/").split("/")[-1].replace("-", " ").title()
+        print(f"  [+] (historial) {page_name}")
+
+        for param in PARAMS_ORDER:
+            param_cfg = market_cfg.get("params", {}).get(param, {})
+            if not param_cfg and param != "hierarchy":
+                continue
+            actual_val = page.get(param)
+            actual_str = str(actual_val) if actual_val is not None else None
+            note = _build_note(param, actual_str, entorno)
+
+            if is_dual:
+                values = [
+                    hist_url,
+                    page_name + " [historial]",
+                    param,
+                    actual_str if actual_str else "\u2014",
+                    "\u2014",
+                    "\u2014",
+                    "\U0001f4cb",
+                    "\u2014",
+                    "\u2014",
+                    "Agregar a url-mapping.json y expected.json",
+                    note,
+                ]
+            else:
+                values = [
+                    hist_url,
+                    page_name + " [historial]",
+                    param,
+                    actual_str if actual_str else "\u2014",
+                    "\u2014",
+                    "\U0001f4cb",
+                    "\u2014",
+                    "Agregar a url-mapping.json y expected.json",
+                    note,
+                ]
+            _write_row(ws, row, values)
+            row += 1
+            row_count += 1
+        row += 1  # separador entre páginas
+
+    if orphan_count:
+        print(f"     ({orphan_count} páginas adicionales del historial sin mapping)")
+
+    return row, row_count
+
+
+def _finalize_sheet(
+    ws, row: int, headers: list[str],
+    market: str, entorno: str, extra: str,
+    row_count: int, ok_count: int, warns: int, fails: int,
+):
+    """Escribe fila de firma, freeze panes y auto-filter."""
+    cols = len(headers)
+
+    # ── Fila de firma ──
+    ws.cell(row, 1,
+            f"Generado: {date.today().isoformat()} | "
+            f"Mercado: {market} | Entorno: {entorno} | "
+            f"Parámetros: {len(PARAMS_ORDER)} | "
+            f"Páginas: {row_count // len(PARAMS_ORDER)}{extra}").font = Font(italic=True, color="999999")
+
+    # Freeze + auto-filter
+    ws.freeze_panes = "A2"
+    last_col = openpyxl.utils.get_column_letter(cols)
+    ws.auto_filter.ref = f"A1:{last_col}{row - 1}"
+
+    print(f"     {row_count} filas")
+    print(f"     \u2705 {ok_count}  \u26a0\ufe0f {warns}  \u274c {fails}")
+
+
 def generate_matrix(market: str, entorno: str, historial_preview: str | None,
                     historial_prod: str | None, mappings: list,
                     expected_cfg: dict, output_path: str,
@@ -478,330 +878,77 @@ def generate_matrix(market: str, entorno: str, historial_preview: str | None,
         sys.exit(1)
 
     is_dual = entorno == "ambas"
-    if simple:
-        headers = COLS_SIMPLE
-    else:
-        headers = COLS_DUAL if is_dual else COLS_SINGLE
-    cols = len(headers)
     is_split = existing_wb is not None
+    headers, cols = _get_headers(is_dual, simple)
 
-    if is_split:
-        wb = existing_wb
-        safe = _sanitize_sheet_name(sheet_name or SHEET_NAME)
-        if safe in wb.sheetnames:
-            idx = 2
-            while f"{safe[:28]}-{idx}" in wb.sheetnames:
-                idx += 1
-            safe = f"{safe[:28]}-{idx}"
-        ws = wb.create_sheet(title=safe)
-        print(f"  [{safe}] Generando matriz...")
-    else:
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        sheet_title = "Sheet1" if simple else _sanitize_sheet_name(SHEET_NAME)
-        ws.title = sheet_title
-
-    _fill_header(ws, headers)
-
-    # ── Column widths ──
-    if simple:
-        widths = [10, 40, 28, 45, 45]
-    else:
-        widths = [10, 40, 28, 45, 45, 12, 14, 14, 18, 55, 55] if is_dual else [10, 40, 28, 45, 45, 12, 18, 55, 55]
-    for i, w in enumerate(widths[:cols], 1):
-        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    # ── Setup workbook ──
+    wb, ws = _setup_workbook_sheet(existing_wb, sheet_name, headers, simple)
+    _set_column_widths(ws, headers, is_dual, simple)
 
     row = 2
-    row_count = 0
-    warns = 0
-    fails = 0
-    first_param_row = True  # para mostrar URL solo en 1ª fila (split)
+    total_row_count = 0
+    total_warns = 0
+    total_fails = 0
+    first_param_row = True
 
     for mapping in mappings:
-        preview_url = mapping.get("preview_url", "")
-        production_url = mapping.get("production_url", preview_url)
-        aem_path = mapping.get("aem_path", "")
         page_key = mapping.get("page_key", "")
-        page_name = _build_page_name(mapping)
-
         if not page_key:
-            print(f"  [!] Saltando URL sin page_key: {preview_url}")
+            print(f"  [!] Saltando URL sin page_key: {mapping.get('preview_url', '')}")
             continue
 
-        # URLs candidatas para matching
-        candidate_urls = [u for u in (preview_url, production_url) if u]
+        # ── Lookup datos de la página ──
+        page_data = _get_page_data(
+            mapping, entorno,
+            catalogo_docs, catalogo, catalogo_prod,
+            historial_preview, historial_prod,
+            display_url,
+        )
 
-        # ── Obtener valores actuales: catalogo_docs > catalogo > historial ──
-        actual_page_preview: dict = {}
-        actual_page_prod: dict = {}
-        preview_source = None
-        prod_source = None
-
-        # Intentar catalogo docs primero (solo match exacto)
-        if is_dual or entorno == "preview":
-            for cu in candidate_urls:
-                cdata = _catalog_lookup(catalogo_docs or {}, cu, exact_only=True)
-                if cdata:
-                    actual_page_preview = cdata
-                    preview_source = "catalogo_docs"
-                    break
-        if is_dual or entorno == "produccion":
-            for cu in candidate_urls:
-                cdata = _catalog_lookup(catalogo_docs or {}, cu, exact_only=True)
-                if cdata:
-                    actual_page_prod = cdata
-                    prod_source = "catalogo_docs"
-                    break
-
-        # Fallback: catalogo del pipeline
-        if not actual_page_preview and (is_dual or entorno == "preview"):
-            for cu in candidate_urls:
-                cdata = _catalog_lookup(catalogo or {}, cu)
-                if cdata:
-                    actual_page_preview = cdata
-                    preview_source = "catalogo"
-                    break
-        if not actual_page_prod and (is_dual or entorno == "produccion"):
-            for cu in candidate_urls:
-                cdata = _catalog_lookup(catalogo_prod or catalogo or {}, cu)
-                if cdata:
-                    actual_page_prod = cdata
-                    prod_source = "catalogo"
-                    break
-
-        # Fallback a historial (solo si existe el archivo)
-        if not actual_page_preview and (is_dual or entorno == "preview") and historial_preview:
-            dd_preview = find_digitaldata_in_historial(historial_preview, candidate_urls)
-            if dd_preview:
-                actual_page_preview = dd_preview.get("page", {})
-                preview_source = "historial"
-
-        if not actual_page_prod and (is_dual or entorno == "produccion") and historial_prod:
-            dd_prod = find_digitaldata_in_historial(historial_prod, candidate_urls)
-            if dd_prod:
-                actual_page_prod = dd_prod.get("page", {})
-                prod_source = "historial"
-
-        # Para single entorno: usar el que corresponda
-        if entorno == "preview":
-            actual_page = actual_page_preview
-        elif entorno == "produccion":
-            actual_page = actual_page_prod
-        else:
-            actual_page = actual_page_preview
-
-        has_preview = bool(actual_page_preview)
-        has_prod = bool(actual_page_prod)
-
-        # URL auditada: la URL que se está validando (production > preview)
-        url_auditada = production_url or preview_url or display_url
-
-
-        if has_preview or has_prod:
-            src = preview_source or prod_source or ""
-            print(f"  [+] {page_name} ({src})")
-        else:
-            print(f"  [!] Sin datos: {page_name}")
-
-        # Procesar cada parámetro
-        for param in PARAMS_ORDER:
-            # Verificar si el parámetro existe en expected
-            param_cfg = market_cfg.get("params", {}).get(param, {})
-            if not param_cfg and param != "hierarchy":
-                continue  # saltar parámetros no definidos en expected
-
-            if is_dual:
-                # Modalidad dual: Preview vs Producción lado a lado
-                actual_val_preview = actual_page_preview.get(param)
-                actual_val_prod = actual_page_prod.get(param)
-
-                actual_str_preview = str(actual_val_preview) if actual_val_preview is not None else None
-                actual_str_prod = str(actual_val_prod) if actual_val_prod is not None else None
-
-                status_preview, action_preview = evaluate_one(param, actual_str_preview, page_key, market_cfg)
-                status_prod, action_prod = evaluate_one(param, actual_str_prod, page_key, market_cfg)
-
-                expected_val, _, _ = resolve_expected(param, page_key, market_cfg)
-                expected_str = str(expected_val) if expected_val is not None else "—"
-
-                note = _build_note(param, actual_str_prod, "produccion")
-                note_preview = _build_note(param, actual_str_preview, "preview")
-                full_note = note or note_preview or ""
-
-                page_or_url = display_url if (is_split and first_param_row) else ("" if is_split else page_name)
-                url_row = url_auditada if (is_split and first_param_row) else ("" if is_split else url_auditada)
-                first_param_row = False
-                values = [
-                    url_row,
-                    page_or_url,
-                    param,
-                    actual_str_preview if actual_str_preview else "—",
-                    actual_str_prod if actual_str_prod else "—",
-                    expected_str,
-                    status_preview,
-                    status_prod,
-                    "Authoring AEM",
-                    action_preview if status_preview != "✅" else action_prod,
-                    full_note,
-                ]
-                _write_row(ws, row, values, status_col=7)
-                if status_preview == "⚠️" or status_prod == "⚠️":
-                    warns += 1
-                if status_preview == "❌" or status_prod == "❌":
-                    fails += 1
-            else:
-                # Modalidad single: un entorno
-                actual_val = actual_page.get(param)
-                actual_str = str(actual_val) if actual_val is not None else None
-
-                # Para hierarchy: si el scraper da "error page" pero sabemos
-                # el valor real del sitio (site_value), usarlo en vez de "error page"
-                if param == "hierarchy" and actual_str and actual_str.lower().strip() in ("error page", "error_page", ""):
-                    site_val = market_cfg.get("params", {}).get("hierarchy", {}).get("site_value", "")
-                    if site_val:
-                        actual_str = site_val
-
-                status, action_text = evaluate_one(param, actual_str, page_key, market_cfg)
-
-                expected_val, _, _ = resolve_expected(param, page_key, market_cfg)
-                expected_str = str(expected_val) if expected_val is not None else "—"
-
-                note = _build_note(param, actual_str, entorno)
-                page_or_url = display_url if (is_split and first_param_row) else ("" if is_split else page_name)
-                url_row = url_auditada if (is_split and first_param_row) else ("" if is_split else url_auditada)
-                first_param_row = False
-                if simple:
-                    values = [
-                        url_row,
-                        page_or_url,
-                        param,
-                        actual_str if actual_str else "—",
-                        expected_str,
-                    ]
-                    _write_row(ws, row, values)
-                else:
-                    values = [
-                        url_row,
-                        page_or_url,
-                        param,
-                        actual_str if actual_str else "—",
-                        expected_str,
-                        status,
-                        "Authoring AEM",
-                        action_text,
-                        note,
-                    ]
-                    _write_row(ws, row, values, status_col=6)
-                    if status == "⚠️":
-                        warns += 1
-                    elif status == "❌":
-                        fails += 1
-
-            row += 1
-            row_count += 1
+        # ── Escribir filas de parámetros ──
+        row, rc, w, f, first_param_row = _write_page_rows(
+            ws, row, page_data,
+            market_cfg, is_dual, is_split,
+            first_param_row, entorno,
+            display_url=display_url,
+            simple=simple,
+        )
+        total_row_count += rc
+        total_warns += w
+        total_fails += f
 
         # Fila separadora entre páginas
         row += 1
 
-    # ── Historial entries (URLs con digitalData pero sin entry en mapping) ──
+    # ── Orphans: URLs del historial sin mapping ──
     historial_path = historial_preview if entorno in ("preview", "ambas") else historial_prod
     if not simple and not skip_orphans and historial_path:
-        index = _build_historial_index(historial_path)
-        if index:
-            # Cuales URLs del mapping ya fueron cubiertas?
-            covered = set()
-            for m in mappings:
-                for u in (m.get("preview_url", ""), m.get("production_url", "")):
-                    if u:
-                        covered.add(u.lower().rstrip("/"))
-            # Encontrar URLs del historial NO cubiertas
-            orphan_count = 0
-            for hist_url, data in sorted(index.items()):
-                is_covered = any(cu in hist_url or hist_url in cu for cu in covered)
-                if is_covered:
-                    continue
-                page = data.get("page", {})
-                has_data = any(page.get(p) for p in PARAMS_ORDER if page.get(p))
-                if not has_data:
-                    continue  # saltar entries sin datos relevantes
-                orphan_count += 1
-                page_name = hist_url.rstrip("/").split("/")[-1].replace("-", " ").title()
-                print(f"  [+] (historial) {page_name}")
-                actual_page = page
-                orphan_url = hist_url
-                for param in PARAMS_ORDER:
-                    param_cfg = market_cfg.get("params", {}).get(param, {})
-                    if not param_cfg and param != "hierarchy":
-                        continue
-                    actual_val = actual_page.get(param)
-                    actual_str = str(actual_val) if actual_val is not None else None
-                    note = _build_note(param, actual_str, entorno)
-                    values = [
-                        orphan_url,
-                        page_name + " [historial]",
-                        param,
-                        actual_str if actual_str else "—",
-                        "—",
-                        "📋",
-                        "—",
-                        "Agregar a url-mapping.json y expected.json",
-                        note,
-                    ]
-                    if is_dual:
-                        values = [
-                            orphan_url,
-                            page_name + " [historial]",
-                            param,
-                            actual_str if actual_str else "—",
-                            "—",
-                            "—",
-                            "📋",
-                            "—",
-                            "—",
-                            "Agregar a url-mapping.json y expected.json",
-                            note,
-                        ]
-                    _write_row(ws, row, values)
-                    row += 1
-                    row_count += 1
-                row += 1  # separador
+        orphan_row, orphan_count = _write_orphan_rows(
+            ws, row, historial_path, market_cfg, entorno, is_dual, mappings,
+        )
+        row = orphan_row
+        total_row_count += orphan_count
 
-            if orphan_count:
-                print(f"     ({orphan_count} páginas adicionales del historial sin mapping)")
-
-    ok_count = row_count - warns - fails
+    ok_count = total_row_count - total_warns - total_fails
 
     if simple:
-        # Modo simple: sin firma, sin freeze, sin auto-filter
         wb.save(output_path)
-        print(f"     {len(mappings)} páginas × {len(PARAMS_ORDER)} parámetros = {row_count} filas")
-        print(f"     ✅ {ok_count}  ⚠️ {warns}  ❌ {fails}")
+        print(f"     {len(mappings)} páginas × {len(PARAMS_ORDER)} parámetros = {total_row_count} filas")
+        print(f"     \u2705 {ok_count}  \u26a0\ufe0f {total_warns}  \u274c {total_fails}")
         return
 
-    # ── Fila de firma ──
+    # ── Fila de firma + freeze ──
     row += 1
     extra = "" if not skip_orphans else " (split)"
-    ws.cell(row, 1,
-            f"Generado: {date.today().isoformat()} | "
-            f"Mercado: {market} | Entorno: {entorno} | "
-            f"Parámetros: {len(PARAMS_ORDER)} | "
-            f"Páginas: {len(mappings)}{extra}").font = Font(italic=True, color="999999")
-
-    # Freeze + auto-filter
-    ws.freeze_panes = "A2"
-    last_col = openpyxl.utils.get_column_letter(cols)
-    ws.auto_filter.ref = f"A1:{last_col}{row - 1}"
+    _finalize_sheet(ws, row, headers, market, entorno, extra,
+                    total_row_count, ok_count, total_warns, total_fails)
 
     if is_split:
-        # El caller se encarga de guardar al final
-        print(f"     {len(mappings)} páginas × {len(PARAMS_ORDER)} parámetros = {row_count} filas")
-        print(f"     ✅ {ok_count}  ⚠️ {warns}  ❌ {fails}")
         return
 
     wb.save(output_path)
     print(f"\n[OK] Matriz generada: {output_path}")
-    print(f"     {len(mappings)} páginas × {len(PARAMS_ORDER)} parámetros = {row_count} filas")
-    print(f"     ✅ {ok_count}  ⚠️ {warns}  ❌ {fails}")
+    print(f"     {len(mappings)} páginas \u00d7 {len(PARAMS_ORDER)} par\u00e1metros = {total_row_count} filas")
 
 
 def load_mappings(mapping_path: str) -> list:

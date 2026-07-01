@@ -30,7 +30,7 @@ if sys.stdout.encoding and sys.stdout.encoding.upper() != "UTF-8":
 
 # ── Browser engine configuration ──
 # Priority: EXTRACT_BROWSER env var > .menu-config.json > default "chromium"
-_MENU_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config/.menu-config.json"
+_MENU_CONFIG_PATH = Path(__file__).resolve().parent.parent / ".menu-config.json"
 _EXTRACT_BROWSER = os.environ.get("EXTRACT_BROWSER", "").strip().lower()
 
 if not _EXTRACT_BROWSER:
@@ -384,7 +384,7 @@ def op_auditar(non_interactive: bool = False) -> None:
     if not os.path.exists(urls_path):
         print(_c("yellow", "  No se encuentra urls.json"))
         if confirm("  Generarlo desde RevisionManual.xlsx?"):
-            run_step([sys.executable, "scripts/_gen_urls.py"], "Generando urls.json")
+            run_step([sys.executable, "src/gen_urls.py"], "Generando urls.json")
         else:
             print(_c("yellow", "  Cancelado. Necesitas urls.json para auditar."))
             return
@@ -571,7 +571,7 @@ def op_catalogo(non_interactive: bool = False) -> None:
 def op_limpieza() -> None:
     """Opcion 5: Limpieza (run.ps1 -SkipTests)."""
     header("LIMPIEZA - run.ps1")
-    run_ps1("scripts/run.ps1", "-SkipTests", timeout=60)
+    run_ps1("src/run.ps1", "-SkipTests", timeout=60)
     print(_c("green", "\n  [OK] Limpieza finalizada."))
 
 
@@ -912,7 +912,7 @@ def op_todo_en_uno(target_market=None, non_interactive=False):
         rp = os.path.join(BASE_DIR, "RevisionManual.xlsx")
         if os.path.exists(rp):
             if confirm("    Generarlo desde RevisionManual.xlsx?", default=True):
-                rc = run_step([sys.executable, "scripts/_gen_urls.py"], "Generando urls.json")
+                rc = run_step([sys.executable, "src/gen_urls.py"], "Generando urls.json")
                 results.append(("Generar urls.json", rc))
                 has_urls = (rc == 0)
             else:
@@ -1069,7 +1069,7 @@ def op_auditar_urls() -> None:
     """Opcion 7: Pipeline de auditoria individual por URL -> PR/tickets/."""
     header("AUDITORIA INDIVIDUAL - auditar_urls.py")
     # El script ya limpia con --clean
-    rc = run_step([sys.executable, "scripts/auditar_urls.py", "--clean"],
+    rc = run_step([sys.executable, "src/auditar_urls.py", "--clean"],
                   "auditar_urls", cwd=str(BASE_DIR))
     if rc == 0:
         c_print("green", "\n  [OK] Pipeline completado. Revisa PR/tickets/")
@@ -1080,7 +1080,7 @@ def op_auditar_urls() -> None:
 def op_auditar_semanas() -> None:
     """Opcion 8: Pipeline de auditoria por semanas."""
     # Detectar archivos disponibles
-    posibles = ["SEMANAS_MX.json", "SEMANAS_PR.json"]
+    posibles = ["data/SEMANAS_MX.json", "data/SEMANAS_PR.json"]
     existentes = [f for f in posibles if os.path.exists(os.path.join(BASE_DIR, f))]
     default = os.path.join(BASE_DIR, existentes[0]) if existentes else ""
 
@@ -1111,7 +1111,7 @@ def op_auditar_semanas() -> None:
     no_matrix_arg = "--no-matrix" if not gen_matriz else ""
 
     header("AUDITORIA POR SEMANAS")
-    cmd = [sys.executable, "scripts/auditar_semanas.py", json_path]
+    cmd = [sys.executable, "src/auditar_semanas.py", json_path]
     if weeks_arg:
         cmd.extend(weeks_arg.split())
     if no_matrix_arg:
@@ -1172,7 +1172,7 @@ if __name__ == "__main__":
     # Verificar proyecto
     is_project = any(
         os.path.exists(os.path.join(BASE_DIR, f))
-        for f in ["src/extract_browser.py", "src/extract_aa.py", "scripts/run.ps1"]
+        for f in ["src/extract_browser.py", "src/extract_aa.py", "src/run.ps1"]
     )
     if not is_project:
         print(_c("red", "[ERROR] Este script debe ejecutarse desde la raiz del proyecto json-convert"))

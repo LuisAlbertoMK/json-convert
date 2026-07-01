@@ -37,12 +37,28 @@ urls.txt
 # Entorno local (no comitear)
 .env
 .history/
-config/.menu-config.json
+.menu-config.json
+.env.example
+logs/
 
 # Directorios de salida de pipeline por mercado (contenido generado)
 PR/
-MX/split/
-PR/split/
+MX/
+output/
+
+# Archivos de semanas (config local, no se sube)
+data/SEMANAS_PR.json
+data/SEMANAS_MX.json
+
+# Documentos generados / ejemplos (no subir)
+docs/*.xlsx
+
+# Temporales del pipeline
+data/.tmp/
+
+# Artefactos de correcciones manuales
+CORREGIDO-*.json
+data/temp_*.json
 
 # Scripts de diagnóstico / debugging
 scripts/_check_cols.py
@@ -65,6 +81,10 @@ part*.py
 excel_analysis*.py
 S*.txt
 M*.txt
+
+# Directorios de memoria del agente AI (no afectan al pipeline)
+.atl/
+.learnings/
 
 # PDFs (no committed — archivos grandes/binarios)
 docs/*.pdf

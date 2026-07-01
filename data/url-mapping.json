@@ -70,5 +70,35 @@
     "production_url": "https://www.ford.com.pr/en/crossovers-suvs/expedition/",
     "preview_url": "https://www.ford.com.pr/en/crossovers-suvs/expedition/",
     "nombre": "Expedition"
+  },
+  {
+    "page_key": "performance",
+    "production_url": "https://www.ford.com.pr/esp/all-vehicles/performance/",
+    "preview_url": "https://www.ford.com.pr/esp/all-vehicles/performance/",
+    "nombre": "Performance"
+  },
+  {
+    "page_key": "raptor",
+    "production_url": "https://www.ford.com.pr/esp/performance/raptor/",
+    "preview_url": "https://www.ford.com.pr/esp/performance/raptor/",
+    "nombre": "Raptor"
+  },
+  {
+    "page_key": "ranger-raptor",
+    "production_url": "https://www.ford.com.pr/esp/performance/ranger-raptor/",
+    "preview_url": "https://www.ford.com.pr/esp/performance/ranger-raptor/",
+    "nombre": "Ranger Raptor"
+  },
+  {
+    "page_key": "mustang-dark-horse",
+    "production_url": "https://www.ford.com.pr/esp/performance/mustang-dark-horse/",
+    "preview_url": "https://www.ford.com.pr/esp/performance/mustang-dark-horse/",
+    "nombre": "Mustang Dark Horse"
+  },
+  {
+    "page_key": "bronco-raptor",
+    "production_url": "https://www.ford.com.pr/esp/performance/bronco-raptor/",
+    "preview_url": "https://www.ford.com.pr/esp/performance/bronco-raptor/",
+    "nombre": "Bronco Raptor"
   }
 ]

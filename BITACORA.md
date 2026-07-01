@@ -1,5 +1,22 @@
 # Bitácora de Sesiones — json-convert
 
+## 2026-06-30 — Limpieza profunda + Auditoría Myco Performance GTBEMEAPUB-42399
+
+### Limpieza de raíz (52→33 entradas)
+- Eliminados 11 scripts debug (`_check_*.py`, `_scan*.py`, `verify_*.py`, etc.)
+- Eliminados `logs/` (10+ .log), `config/` (326B), `.learnings/` (8 md), `.atl/` (2 files)
+- Movidos SEMANAS_*.json → `data/`, `.menu-config.json` y `.env.example` → raíz
+- Actualizada ruta en `menu.py` para SEMANAS y menu-config
+- Actualizado `.gitignore`: logs/, .learnings/, .atl/, rutas nuevas
+- Caches regenerables eliminados (.pytest_cache, .url_cache, egg-info)
+
+### Auditoría Myco All Vehicles Performance (GTBEMEAPUB-42399)
+- Extraídas 6 URLs desde `docs/FPR_MYCO_All_vehicles_performance_v2.xlsx`
+- Creado `myco_urls.json` → ejecutado `auditar_urls.py --ticket 42399`
+- 6/6 URLs auditadas OK: Performance, Raptor, Ranger Raptor, Mustang Dark Horse, Bronco Raptor, Home
+- Todos los archivos de ticket consolidados en `PR/GTBEMEAPUB-42399/`
+- Score digitalData: 51/80 en Performance (esperado), Home ≥80 ✅
+
 ## 2026-06-26 (Parte 3) — Corrección: revertir datos inventados, solo docs reales
 
 ### Corrección

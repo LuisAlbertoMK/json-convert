@@ -229,12 +229,17 @@
                 "showroom": "fpr:showroom:all vehicles",
                 "ev": "showroom:electrified",
                 "trucks": "fpr:trucks:home",
-                "bronco": "fpr:vehicles:bronco-suv",
-                "bronco-models-base": "fpr:vehicles:bronco-base",
-                "bronco-models-big-bend": "fpr:vehicles:bronco-big-bend",
-                "bronco-models-outer-banks": "fpr:vehicles:bronco-outer-banks",
-                "bronco-models-badlands": "fpr:vehicles:bronco-badlands",
-                "expedition": "fpr:vehicles:expedition"
+                "bronco": "fpr:vehicle:suv:ford bronco",
+                "bronco-models-base": "fpr:vehicle:suv:ford bronco base",
+                "bronco-models-big-bend": "fpr:vehicle:suv:ford bronco big bend",
+                "bronco-models-outer-banks": "fpr:vehicle:suv:ford bronco outer banks",
+                "bronco-models-badlands": "fpr:vehicle:suv:ford bronco badlands",
+                "expedition": "fpr:vehicle:suv:ford expedition",
+                "performance": "fpr:showroom:all vehicles:performance",
+                "raptor": "fpr:showroom:raptor",
+                "ranger-raptor": "fpr:showroom:ranger raptor",
+                "mustang-dark-horse": "fpr:showroom:mustang dark horse",
+                "bronco-raptor": "fpr:showroom:bronco raptor"
             },
           "default_note": "Alinear nomenclatura al estandar de EUA"
         },
@@ -246,7 +251,13 @@
             "bronco-models-base": "fpr:vehicle:suv:ford bronco base",
             "bronco-models-big-bend": "fpr:vehicle:suv:ford bronco big bend",
             "bronco-models-outer-banks": "fpr:vehicle:suv:ford bronco outer banks",
-            "bronco-models-badlands": "fpr:vehicle:suv:ford bronco badlands"
+            "bronco-models-badlands": "fpr:vehicle:suv:ford bronco badlands",
+            "expedition": "fpr:vehicle:suv:ford expedition",
+            "performance": "fpr:showroom:all vehicles:performance",
+            "raptor": "fpr:showroom:raptor",
+            "ranger-raptor": "fpr:showroom:ranger raptor",
+            "mustang-dark-horse": "fpr:showroom:mustang dark horse",
+            "bronco-raptor": "fpr:showroom:bronco raptor"
           },
           "site_value": "vehicle:2025:suv:ford bronco",
           "note": "Formato: {prefix}:vehicle:{sub}:{model full name} (Marco Garcia)"
@@ -254,6 +265,7 @@
         "siteSection": {
           "label": "SITE SECTION (eVar9 / hierarchy)",
           "rule": "mapping",
+          "site_value": "vehicle",
             "mapping": {
                 "home": "home",
                 "home-redirect": "home",
@@ -272,14 +284,44 @@
                 "bronco-models-big-bend": "vehicles",
                 "bronco-models-outer-banks": "vehicles",
                 "bronco-models-badlands": "vehicles",
-                "expedition": "vehicles"
+                "expedition": "vehicles",
+                "performance": "showroom",
+                "raptor": "showroom",
+                "ranger-raptor": "showroom",
+                "mustang-dark-horse": "showroom",
+                "bronco-raptor": "showroom"
             }
         },
         "pageNameNoVehicle": {
           "label": "PAGE NAME NO VEHICLE (eVar11)",
-          "rule": "mirror",
-          "source": "pageName",
-          "note": "Alinear con pageName"
+          "rule": "mapping",
+          "site_value": "vehicle:home",
+          "mapping": {
+            "home": "fpr:home",
+            "home-redirect": "fpr:home",
+            "brochures": "fpr:shopping:brochures",
+            "dealerships": "fpr:shopping:dealer-locator",
+            "owners": "fpr:owners:dashboard",
+            "super-duty-f250": "fpr:vehicles:super-duty-f250",
+            "sustainability": "fpr:sustainability:home",
+            "legal": "fpr:help:legal",
+            "privacy": "fpr:help:privacy",
+            "showroom": "fpr:showroom:all vehicles",
+            "ev": "showroom:electrified",
+            "trucks": "fpr:trucks:home",
+            "bronco": "fpr:vehicle:suv",
+            "bronco-models-base": "fpr:vehicle:suv",
+            "bronco-models-big-bend": "fpr:vehicle:suv",
+            "bronco-models-outer-banks": "fpr:vehicle:suv",
+            "bronco-models-badlands": "fpr:vehicle:suv",
+            "expedition": "fpr:vehicle:suv",
+            "performance": "fpr:showroom:all vehicles:performance",
+            "raptor": "fpr:showroom:raptor",
+            "ranger-raptor": "fpr:showroom:ranger raptor",
+            "mustang-dark-horse": "fpr:showroom:mustang dark horse",
+            "bronco-raptor": "fpr:showroom:bronco raptor"
+          },
+          "note": "pageNameNoVehicle = path sin vehicle name (todos los Bronco = fpr:vehicle:suv)"
         },
         "client": {
           "label": "CLIENT (eVar14)",
@@ -295,6 +337,7 @@
         "variantName": {
           "label": "VARIANT NAME (Direct Call)",
           "rule": "mapping",
+          "site_value": "vehicle-load",
             "mapping": {
                 "home": "home-load",
                 "home-redirect": "home-load",
@@ -308,12 +351,17 @@
                 "showroom": "showroom-load",
                 "ev": "showroom-load",
                 "trucks": "trucks-load",
-                "bronco": "vhp-load",
-                "bronco-models-base": "vhp-load",
-                "bronco-models-big-bend": "vhp-load",
-                "bronco-models-outer-banks": "vhp-load",
-                "bronco-models-badlands": "vhp-load",
-                "expedition": "vhp-load"
+                "bronco": "vehicle-load",
+                "bronco-models-base": "vehicle-load",
+                "bronco-models-big-bend": "vehicle-load",
+                "bronco-models-outer-banks": "vehicle-load",
+                "bronco-models-badlands": "vehicle-load",
+                "expedition": "vhp-load",
+                "performance": "showroom-load",
+                "raptor": "showroom-load",
+                "ranger-raptor": "showroom-load",
+                "mustang-dark-horse": "showroom-load",
+                "bronco-raptor": "showroom-load"
             }
         },
         "pageType": {
@@ -332,12 +380,17 @@
                 "showroom": "showroom",
                 "ev": "showroom",
                 "trucks": "trucks",
-                "bronco": "vhp",
-                "bronco-models-base": "vhp",
-                "bronco-models-big-bend": "vhp",
-                "bronco-models-outer-banks": "vhp",
-                "bronco-models-badlands": "vhp",
-                "expedition": "vhp"
+                "bronco": "vehicle-home",
+                "bronco-models-base": "vehicle-home",
+                "bronco-models-big-bend": "vehicle-home",
+                "bronco-models-outer-banks": "vehicle-home",
+                "bronco-models-badlands": "vehicle-home",
+                "expedition": "vhp",
+                "performance": "showroom",
+                "raptor": "showroom",
+                "ranger-raptor": "showroom",
+                "mustang-dark-horse": "showroom",
+                "bronco-raptor": "showroom"
             },
           "note": "Nuevo parametro del componente de EUA"
         },

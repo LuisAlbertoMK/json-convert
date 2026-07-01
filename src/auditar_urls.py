@@ -13,6 +13,7 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 import argparse
+from datetime import datetime
 import json
 import os
 import shutil
@@ -110,17 +111,73 @@ def _to_pascal(slug: str) -> str:
     """Convierte slug a PascalCase. Ej: 'big-bend' -> 'BigBend'"""
     return "".join(word.capitalize() for word in slug.replace("-", " ").replace("_", " ").split())
 
-def auditar_url(url_entry: dict, clean_first: bool = False, ticket: str = ""):
+
+def _commit_staging(staging_dir: str) -> None:
+    """Mueve archivos de staging → PR/ de forma atómica.
+
+    Cada URL produce staging/{slug}/produccion/, staging/{slug}/tickets/
+    y staging/{slug}/matriz-validacion-*.xlsx.
+    Al committear: tickets → PR/tickets/{slug}/,
+    produccion y matrices → PR/ (último slug sobrescribe).
+    """
+    print(f"\n{'='*60}")
+    print(f"  COMMIT: Moviendo staging → PR/")
+    print(f"{'='*60}")
+
+    os.makedirs(PROD_DIR, exist_ok=True)
+    os.makedirs(TICKETS_DIR, exist_ok=True)
+
+    slugs = sorted(os.listdir(staging_dir))
+    for slug in slugs:
+        slug_path = os.path.join(staging_dir, slug)
+        if not os.path.isdir(slug_path):
+            continue
+
+        # Tickets individuales por URL
+        src_tickets = os.path.join(slug_path, "tickets")
+        if os.path.isdir(src_tickets):
+            dst = os.path.join(TICKETS_DIR, slug)
+            os.makedirs(dst, exist_ok=True)
+            for fname in os.listdir(src_tickets):
+                shutil.move(os.path.join(src_tickets, fname), os.path.join(dst, fname))
+            print(f"  [TICKETS] {slug}/ → PR/tickets/{slug}/")
+
+        # Producción (shared — último slug sobrescribe)
+        src_prod = os.path.join(slug_path, "produccion")
+        if os.path.isdir(src_prod):
+            for fname in os.listdir(src_prod):
+                shutil.move(os.path.join(src_prod, fname), os.path.join(PROD_DIR, fname))
+
+        # Matrices (shared — último slug sobrescribe)
+        for fname in os.listdir(slug_path):
+            if fname.startswith("matriz-validacion"):
+                shutil.move(os.path.join(slug_path, fname), os.path.join(PR_DIR, fname))
+
+    print(f"  [OK] Commit completado — {len(slugs)} slugs a PR/")
+
+
+def auditar_url(url_entry: dict, clean_first: bool = False, ticket: str = "",
+                staging_dir: str = ""):
     page_key = url_entry["page_key"]
     nombre = url_entry["nombre"]
     url = url_entry["url"]
     slug = url_entry["slug"]
-    out_dir = os.path.join(TICKETS_DIR, slug)
+
+    # ── Determinar directorios de salida (staging o final) ──
+    if staging_dir:
+        staging_slug = os.path.join(staging_dir, slug)
+        prod_dir = os.path.join(staging_slug, "produccion")
+        out_dir = os.path.join(staging_slug, "tickets")
+    else:
+        prod_dir = PROD_DIR
+        out_dir = os.path.join(TICKETS_DIR, slug)
 
     print(f"\n{'='*60}")
     print(f"  AUDITANDO: {nombre}")
     print(f"  URL: {url}")
     print(f"  OUTPUT: {out_dir}")
+    if staging_dir:
+        print(f"  STAGING: {staging_dir}")
     print(f"{'='*60}")
 
     # ── 1. Preparar archivos de config (archivos UNICOS por URL para evitar race conditions) ──
@@ -140,13 +197,13 @@ def auditar_url(url_entry: dict, clean_first: bool = False, ticket: str = ""):
         "tipo": "produccion",
     }])
 
-    # ── 2. Limpiar PR/produccion/ ──
-    if clean_first and os.path.exists(PROD_DIR):
-        shutil.rmtree(PROD_DIR)
-    os.makedirs(PROD_DIR, exist_ok=True)
+    # ── 2. Limpiar directorio de salida ──
+    if clean_first and os.path.exists(prod_dir):
+        shutil.rmtree(prod_dir)
+    os.makedirs(prod_dir, exist_ok=True)
 
     # ── 3. Auditoria con browser ──
-    ret = run([
+    browser_args = [
         PYTHON, "src/extract_browser.py",
         "--urls", urls_path,
         "--market", "PR",
@@ -154,7 +211,10 @@ def auditar_url(url_entry: dict, clean_first: bool = False, ticket: str = ""):
         "--split-aa", "--progress",
         "--headless", "--browser", "firefox",
         "--timeout", "30",
-    ], nombre)
+    ]
+    if staging_dir:
+        browser_args.extend(["--output", os.path.join(prod_dir, "historial.xlsx")])
+    ret = run(browser_args, nombre)
     if ret != 0:
         print(f"  [SKIP] Error en auditoria ({ret})")
         return False
@@ -162,17 +222,23 @@ def auditar_url(url_entry: dict, clean_first: bool = False, ticket: str = ""):
     # ── 4. Post-procesar AA ──
     run([
         PYTHON, "src/extract_aa.py",
-        "--input", "PR/produccion/historial.xlsx",
+        "--input", os.path.join(prod_dir, "historial.xlsx"),
         "--urls", urls_path,
     ], f"{nombre} (AA)")
 
     # ── 5. Generar matriz (usando mapping TEMPORAL, no el global) ──
-    run([
+    matrix_args = [
         PYTHON, "src/generate_validation_matrix.py",
         "--market", "PR",
         "--entorno", "produccion",
         "--mapping", url_mapping_path,
-    ], f"{nombre} (matriz)")
+    ]
+    if staging_dir:
+        matrix_args.extend([
+            "--output", os.path.join(staging_slug, "matriz-validacion-produccion.xlsx"),
+            "--historial-produccion", os.path.join(prod_dir, "historial.xlsx"),
+        ])
+    run(matrix_args, f"{nombre} (matriz)")
 
     # ── 6. Copiar outputs (con verificacion) ──
     os.makedirs(out_dir, exist_ok=True)
@@ -180,7 +246,7 @@ def auditar_url(url_entry: dict, clean_first: bool = False, ticket: str = ""):
         print(f"  [ERR] No se pudo crear {out_dir}")
         return False
     for fname in ["con_aa.xlsx", "sin_aa.xlsx", "historial.xlsx"]:
-        src = os.path.join(PROD_DIR, fname)
+        src = os.path.join(prod_dir, fname)
         if os.path.exists(src):
             dst = os.path.join(out_dir, fname)
             try:
@@ -189,7 +255,10 @@ def auditar_url(url_entry: dict, clean_first: bool = False, ticket: str = ""):
                     print(f"  [WARN] No se pudo copiar {fname} a {out_dir}")
             except Exception as e:
                 print(f"  [WARN] Error copiando {fname}: {e}")
-    src_matriz = os.path.join(PR_DIR, "matriz-validacion-produccion.xlsx")
+    if staging_dir:
+        src_matriz = os.path.join(staging_slug, "matriz-validacion-produccion.xlsx")
+    else:
+        src_matriz = os.path.join(PR_DIR, "matriz-validacion-produccion.xlsx")
     if os.path.exists(src_matriz):
         dst_matriz = os.path.join(out_dir, "matriz-validacion-produccion.xlsx")
         try:
@@ -202,14 +271,19 @@ def auditar_url(url_entry: dict, clean_first: bool = False, ticket: str = ""):
         model_name = _to_pascal(slug)
         simple_name = f"GTBEMEAPUB-{ticket}-PR-ESP-{model_name}.xlsx"
         simple_path = os.path.join(out_dir, simple_name)
-        run([
+        simple_args = [
             PYTHON, "src/generate_validation_matrix.py",
             "--market", "PR",
             "--entorno", "produccion",
             "--mapping", url_mapping_path,
             "--simple",
             "--output", simple_path,
-        ], f"{nombre} (simple)")
+        ]
+        if staging_dir:
+            simple_args.extend([
+                "--historial-produccion", os.path.join(prod_dir, "historial.xlsx"),
+            ])
+        run(simple_args, f"{nombre} (simple)")
     else:
         print("  [--ticket no especificado, omitiendo archivo individual]")
 
@@ -253,14 +327,31 @@ def main():
         os.makedirs(TICKETS_DIR, exist_ok=True)
     os.makedirs(TEMP_DIR, exist_ok=True)
 
+    # ── Staging area: aislamiento por corrida ──
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    staging_dir = os.path.join(ROOT, "data", ".tmp", f"staging_{run_id}")
+    os.makedirs(staging_dir, exist_ok=True)
+    print(f"  [STAGING] {staging_dir}")
+
     # Auditar cada URL
     ok = 0
     fail = 0
-    for entry in urls_list:
-        if auditar_url(entry, clean_first=True, ticket=ticket):
-            ok += 1
+    try:
+        for entry in urls_list:
+            if auditar_url(entry, clean_first=True, ticket=ticket, staging_dir=staging_dir):
+                ok += 1
+            else:
+                fail += 1
+
+        # Commit atómico solo si TODO OK
+        if fail == 0 and ok > 0:
+            _commit_staging(staging_dir)
         else:
-            fail += 1
+            print(f"\n  [STAGING] {fail} errores — PR/ NO modificado")
+    finally:
+        # Limpiar staging siempre
+        if os.path.exists(staging_dir):
+            shutil.rmtree(staging_dir, ignore_errors=True)
 
     # Limpiar archivos temporales
     if os.path.exists(TEMP_DIR):

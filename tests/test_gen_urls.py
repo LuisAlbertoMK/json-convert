@@ -1,5 +1,5 @@
 """
-test_gen_urls.py — Tests unitarios para _gen_urls.py.
+test_gen_urls.py — Tests unitarios para gen_urls.py.
 
 Requiere: openpyxl (no requiere playwright ni navegador).
 """
@@ -10,8 +10,8 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
-from _gen_urls import extract
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+from gen_urls import extract
 
 
 class TestGenUrlsExtract(unittest.TestCase):
